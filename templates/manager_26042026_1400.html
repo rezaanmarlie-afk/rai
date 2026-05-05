@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ASOC Manager Ticket Quality Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js">
+function capacityStatusPill(status) {
+  const s = String(status || '').toUpperCase();
+  const c = s === 'AVAILABLE' ? 'capacity-ok' : s === 'NEAR_CAPACITY' ? 'capacity-warn' : s === 'OVER_ALLOCATED' ? 'capacity-bad' : '';
+  return `<span class="pill ${c}">${escapeHtml(status)}</span>`;
+}
+
+function useSelectedAssigneeForCapacity() {
+  const selected = document.getElementById('assigneeFilter')?.value || '';
+  if (!selected) {
+    alert('Select an assignee in the Manager Drill-down first, or type the assignee name manually.');
+    return;
+  }
+  document.getElementById('capacityAssignee').value = selected;
+}
+
+function renderCapacity(data) {
+  const s = data.summary || {};
+  document.getElementById('capacityKpis').innerHTML = `
+    <div class="card span-3 kpi"><div><div class="label">Active Points</div><div class="value">${s.total_story_points || 0}</div></div><div class="note">${s.active_ticket_count || 0} active tickets</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Utilisation</div><div class="value">${s.utilization_percent || 0}%</div></div><div class="note">${capacityStatusPill(s.capacity_status || 'UNKNOWN')}</div></div>
+    <div class="card span-3 kpi"><div><div class="label">In Progress Points</div><div class="value">${s.in_progress_story_points || 0}</div></div><div class="note">Status Category: In Progress</div></div>
+    <div class="card span-3 kpi"><div><div class="label">To Do Points</div><div class="value">${s.todo_story_points || 0}</div></div><div class="note">Status Category: To Do</div></div>
+  `;
+  const sp = data.storyPointsField || {};
+  const warning = [];
+  warning.push(`JQL used: ${data.jql || ''}`);
+  warning.push(`Story Points field: ${sp.field_id || 'not configured'} (${sp.source || 'unknown'})`);
+  warning.push(`Unpointed active tickets: ${s.unpointed_ticket_count || 0}`);
+  if (sp.warning) warning.push(sp.warning);
+  document.getElementById('capacityWarning').textContent = warning.join(' | ');
+
+  if (capacityProjectChart) capacityProjectChart.destroy();
+  if (capacityStatusChart) capacityStatusChart.destroy();
+  const projects = data.by_project || [];
+  const statuses = data.by_status_category || [];
+  capacityProjectChart = new Chart(document.getElementById('capacityProjectChart'), {
+    type:'bar',
+    data:{ labels:projects.map(x=>x.name), datasets:[{ label:'Story Points', data:projects.map(x=>x.story_points) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+  capacityStatusChart = new Chart(document.getElementById('capacityStatusChart'), {
+    type:'bar',
+    data:{ labels:statuses.map(x=>x.name), datasets:[{ label:'Story Points', data:statuses.map(x=>x.story_points) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const tbody = document.querySelector('#capacityTable tbody');
+  const rows = data.tickets || [];
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">No active tickets found for this assignee/scope.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(t => `
+    <tr>
+      <td>${escapeHtml(t.issueKey)}</td>
+      <td>${escapeHtml(t.projectKey)}</td>
+      <td>${escapeHtml(t.status)}</td>
+      <td>${escapeHtml(t.statusCategory)}</td>
+      <td>${t.storyPoints || 0}</td>
+      <td>${escapeHtml(t.issueType)}</td>
+      <td>${escapeHtml(t.summary)}</td>
+    </tr>
+  `).join('');
+}
+
+async function runCapacityCheck() {
+  const assignee = document.getElementById('capacityAssignee').value.trim();
+  if (!assignee) return alert('Enter an assignee name first.');
+  const payload = {
+    assignee,
+    projectKeys: document.getElementById('capacityProjects').value,
+    storyPointsFieldId: document.getElementById('capacityStoryPointsField').value.trim(),
+    sprintCapacityPoints: Number(document.getElementById('capacityPoints').value || 20),
+    jqlOverride: document.getElementById('capacityJql').value.trim(),
+    maxResults: 0
+  };
+  const res = await fetch('/api/tickets/assignee-capacity', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  setResult(data);
+  if (!res.ok) {
+    alert(data.error || 'Capacity check failed.');
+    return;
+  }
+  renderCapacity(data);
+}
+
+</script>
+  <style>
+    :root { --navy:#0f172a; --muted:#64748b; --border:#e2e8f0; --bg:#f5f7fb; --card:#ffffff; --green:#166534; --amber:#854d0e; --red:#991b1b; --blue:#2563eb; }
+    body { font-family: Arial, sans-serif; margin:0; background:var(--bg); color:#1f2937; }
+    .container { max-width: 1440px; margin: 24px auto; padding: 0 16px; }
+    .hero { background:var(--navy); color:#fff; padding:24px; border-radius:16px; margin-bottom:18px; display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+    .hero h1 { margin:0 0 8px 0; font-size:30px; }
+    .hero p { margin:0; color:#cbd5e1; }
+    .nav a { color:#fff; text-decoration:none; background:#334155; padding:10px 14px; border-radius:10px; display:inline-block; }
+    .grid { display:grid; grid-template-columns: repeat(12, 1fr); gap:16px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:18px; box-shadow:0 2px 8px rgba(15,23,42,.06); }
+    .span-12 { grid-column: span 12; } .span-8 { grid-column: span 8; } .span-6 { grid-column: span 6; } .span-4 { grid-column: span 4; } .span-3 { grid-column: span 3; }
+    h2, h3 { margin-top:0; }
+    label { display:block; font-size:13px; font-weight:700; margin:12px 0 6px; }
+    input, select { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #cbd5e1; border-radius:10px; font-size:14px; }
+    button { margin-top:12px; background:var(--blue); color:#fff; border:0; border-radius:10px; padding:11px 15px; cursor:pointer; font-size:14px; font-weight:700; margin-right:8px; }
+    button.secondary { background:#475569; } button.success { background:#15803d; } button:hover { filter:brightness(.94); }
+    .muted { color:var(--muted); font-size:13px; }
+    .kpi { min-height:110px; display:flex; flex-direction:column; justify-content:space-between; }
+    .kpi .label { color:var(--muted); font-size:13px; font-weight:700; }
+    .kpi .value { font-size:34px; font-weight:800; margin-top:8px; }
+    .kpi .note { font-size:12px; color:var(--muted); }
+    .green { color:var(--green); } .amber { color:var(--amber); } .red { color:var(--red); }
+    .leader-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .person-card { border:1px solid var(--border); border-radius:12px; padding:12px; background:#f8fafc; }
+    .person-card strong { display:block; margin-bottom:4px; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:10px; text-align:left; vertical-align:top; font-size:13px; }
+    th { background:#f8fafc; color:#334155; }
+    .pill { display:inline-block; border-radius:999px; padding:5px 9px; font-size:12px; font-weight:700; background:#e2e8f0; }
+    .pill.pass { background:#dcfce7; color:#166534; } .pill.partial { background:#fef9c3; color:#854d0e; } .pill.fail { background:#fee2e2; color:#991b1b; }
+    .pill.capacity-ok { background:#dcfce7; color:#166534; } .pill.capacity-warn { background:#fef9c3; color:#854d0e; } .pill.capacity-bad { background:#fee2e2; color:#991b1b; }
+    .result { background:#0b1220; color:#e5e7eb; padding:14px; border-radius:12px; overflow:auto; white-space:pre-wrap; font-family:Consolas, monospace; font-size:12px; min-height:110px; }
+    @media(max-width: 980px) { .span-8,.span-6,.span-4,.span-3 { grid-column:span 12; } .hero { flex-direction:column; } .leader-grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="hero">
+    <div>
+      <h1>ASOC Ticket Quality – Manager Dashboard</h1>
+      <p>Executive view of active ticket quality by board and owner. Done / Completed tickets are excluded by default.</p>
+    </div>
+    <div class="nav"><a href="/">Back to Ticket Workspace</a></div>
+  </div>
+
+  <div class="grid">
+    <div class="card span-12">
+      <h2>Dashboard Controls</h2>
+      <div class="grid">
+        <div class="span-4">
+          <label for="projectKey">Board / Project Key</label>
+          <input id="projectKey" value="{{ default_project }}" placeholder="ARC, CONC, NMGOS" />
+        </div>
+        <div class="span-8">
+          <label for="jql">Custom JQL (optional)</label>
+          <input id="jql" placeholder="project in (ARC, CONC, NMGOS) AND statusCategory != Done ORDER BY updated DESC" />
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:12px;">
+        <input id="excludeDoneCompleted" type="checkbox" checked style="width:auto;" />
+        Exclude Done / Completed / Closed / Resolved tickets
+      </label>
+      <div class="muted">All matching tickets are included. Jira is paged internally in batches of 100; no 20/100-ticket cap is applied by the app.</div>
+      <button class="success" onclick="runManagerDashboard()">Run Manager Dashboard</button>
+      <button class="secondary" onclick="exportManagerCsv(false)">Export Full CSV</button>
+      <button class="secondary" onclick="exportManagerCsv(true)">Export Weak Tickets CSV</button>
+    </div>
+
+    <div class="card span-3 kpi"><div><div class="label">Overall Quality</div><div id="kpiQuality" class="value">-</div></div><div id="kpiMeta" class="note">Run dashboard</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Pass Rate</div><div id="kpiPass" class="value green">-</div></div><div class="note">Tickets scoring 80+</div></div>
+    <div class="card span-3 kpi"><div><div class="label">At Risk</div><div id="kpiRisk" class="value red">-</div></div><div class="note">Score below 60 or failed</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Done Excluded</div><div id="kpiExcluded" class="value amber">-</div></div><div class="note">Excluded from active view</div></div>
+
+    <div class="card span-4"><h3>Board Quality</h3><canvas id="boardChart"></canvas></div>
+    <div class="card span-4"><h3>People Quality</h3><canvas id="assigneeChart"></canvas></div>
+    <div class="card span-4"><h3>Root Cause Gaps</h3><canvas id="gapsChart"></canvas></div>
+
+    <div class="card span-6">
+      <h3>Top Performers</h3>
+      <div id="topPerformers" class="leader-grid"><div class="muted">Run dashboard</div></div>
+    </div>
+    <div class="card span-6">
+      <h3>Needs Attention</h3>
+      <div id="needsAttention" class="leader-grid"><div class="muted">Run dashboard</div></div>
+    </div>
+
+    <div class="card span-12">
+      <h2>Manager Drill-down by Assignee</h2>
+      <div class="grid">
+        <div class="span-6">
+          <label for="assigneeFilter">Select Assignee</label>
+          <select id="assigneeFilter" onchange="applyAssigneeFilter()"><option value="">Run dashboard first</option></select>
+        </div>
+        <div class="span-6">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:36px;">
+            <input id="weakOnly" type="checkbox" onchange="applyAssigneeFilter()" style="width:auto;" />
+            Show only weak / non-pass tickets
+          </label>
+        </div>
+      </div>
+      <div id="personStats" class="grid" style="margin-top:12px;"></div>
+      <div style="overflow:auto;">
+        <table id="personTable">
+          <thead><tr><th>Issue</th><th>Board</th><th>Score</th><th>Status</th><th>Summary</th><th>Main Gaps</th><th>Action</th></tr></thead>
+          <tbody><tr><td colspan="7" class="muted">Select an assignee after running the dashboard.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card span-12">
+      <h2>Individual Capacity Check</h2>
+      <div class="muted">
+        Checks a person’s active allocation across multiple Jira projects/boards. Done / Completed work is excluded. Capacity is based on Story Points for To Do and In Progress tickets.
+      </div>
+      <div class="grid">
+        <div class="span-3">
+          <label for="capacityAssignee">Assignee Name</label>
+          <input id="capacityAssignee" placeholder="e.g. Rezaan Marlie" />
+        </div>
+        <div class="span-3">
+          <label for="capacityProjects">Projects / Boards</label>
+          <input id="capacityProjects" placeholder="ARC, CONC, NMGOS. Leave blank for all visible projects." />
+        </div>
+        <div class="span-3">
+          <label for="capacityStoryPointsField">Story Points Field ID</label>
+          <input id="capacityStoryPointsField" value="{{ story_points_field | default('', true) }}" placeholder="e.g. customfield_10016" />
+        </div>
+        <div class="span-3">
+          <label for="capacityPoints">Sprint Capacity Points</label>
+          <input id="capacityPoints" type="number" value="20" />
+        </div>
+      </div>
+      <label for="capacityJql">Advanced JQL Override (optional)</label>
+      <input id="capacityJql" placeholder='assignee = "Name" AND statusCategory != Done ORDER BY updated DESC' />
+      <button class="success" onclick="runCapacityCheck()">Check Individual Capacity</button>
+      <button class="secondary" onclick="useSelectedAssigneeForCapacity()">Use Selected Assignee</button>
+      <div id="capacityKpis" class="grid" style="margin-top:12px;">
+        <div class="card span-3 kpi"><div><div class="label">Active Points</div><div class="value">-</div></div></div>
+        <div class="card span-3 kpi"><div><div class="label">Utilisation</div><div class="value">-</div></div></div>
+        <div class="card span-3 kpi"><div><div class="label">In Progress</div><div class="value">-</div></div></div>
+        <div class="card span-3 kpi"><div><div class="label">To Do</div><div class="value">-</div></div></div>
+      </div>
+      <div id="capacityWarning" class="muted" style="margin-top:8px;"></div>
+      <div class="grid" style="margin-top:12px;">
+        <div class="card span-6"><h3>Allocation by Project</h3><canvas id="capacityProjectChart"></canvas></div>
+        <div class="card span-6"><h3>Allocation by Status Category</h3><canvas id="capacityStatusChart"></canvas></div>
+      </div>
+      <div style="overflow:auto;">
+        <table id="capacityTable">
+          <thead><tr><th>Issue</th><th>Project</th><th>Status</th><th>Status Category</th><th>Story Points</th><th>Type</th><th>Summary</th></tr></thead>
+          <tbody><tr><td colspan="7" class="muted">Run a capacity check to load active allocation.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card span-12">
+      <h2>High-Risk Tickets</h2>
+      <div style="overflow:auto;">
+        <table id="riskTable">
+          <thead><tr><th>Issue</th><th>Owner</th><th>Board</th><th>Score</th><th>Status</th><th>Main Gaps</th><th>Action</th></tr></thead>
+          <tbody><tr><td colspan="7" class="muted">Run dashboard to load risk tickets.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card span-12"><h2>Raw Result</h2><div id="result" class="result">Ready.</div></div>
+  </div>
+</div>
+
+<script>
+let managerData = null;
+let boardChart = null, assigneeChart = null, gapsChart = null;
+let capacityProjectChart = null, capacityStatusChart = null;
+
+function escapeHtml(text) {
+  return String(text || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+}
+function setResult(data) { document.getElementById('result').textContent = JSON.stringify(data, null, 2); }
+function statusPill(status) { const c = status === 'PASS' ? 'pass' : status === 'PARTIAL' ? 'partial' : 'fail'; return `<span class="pill ${c}">${escapeHtml(status)}</span>`; }
+function loadTicket(issueKey) { window.location.href = `/?issueKey=${encodeURIComponent(issueKey)}`; }
+
+function renderKpis(data) {
+  const e = data.executive_summary || {};
+  document.getElementById('kpiQuality').textContent = `${e.overall_quality_score || 0}%`;
+  document.getElementById('kpiPass').textContent = `${e.pass_percent || 0}%`;
+  document.getElementById('kpiRisk').textContent = `${e.at_risk_count || 0}`;
+  document.getElementById('kpiExcluded').textContent = `${data.excluded_done_completed_count || 0}`;
+  document.getElementById('kpiMeta').textContent = `${e.total_tickets || 0} active tickets | ${data.jira_pages_read || 0} Jira pages read | ${data.jira_fetched_count || 0} fetched`;
+}
+
+function renderCharts(data) {
+  if (boardChart) boardChart.destroy(); if (assigneeChart) assigneeChart.destroy(); if (gapsChart) gapsChart.destroy();
+  const boards = data.board_summary || [];
+  const assignees = (data.assignee_summary || []).slice().sort((a,b)=>a.avg_score-b.avg_score).slice(0,12);
+  const gaps = (data.issue_breakdown || []).slice(0,8);
+  boardChart = new Chart(document.getElementById('boardChart'), { type:'bar', data:{ labels:boards.map(x=>x.name), datasets:[{ label:'Avg score', data:boards.map(x=>x.avg_score) }] }, options:{ responsive:true, scales:{ y:{ beginAtZero:true, max:100 } } } });
+  assigneeChart = new Chart(document.getElementById('assigneeChart'), { type:'bar', data:{ labels:assignees.map(x=>x.name), datasets:[{ label:'Avg score', data:assignees.map(x=>x.avg_score) }] }, options:{ indexAxis:'y', responsive:true, scales:{ x:{ beginAtZero:true, max:100 } } } });
+  gapsChart = new Chart(document.getElementById('gapsChart'), { type:'bar', data:{ labels:gaps.map(x=>x.issue), datasets:[{ label:'Count', data:gaps.map(x=>x.count) }] }, options:{ indexAxis:'y', responsive:true } });
+}
+
+function renderLeaderboards(data) {
+  function card(x) { return `<div class="person-card"><strong>${escapeHtml(x.name)}</strong><div>Avg score: <b>${x.avg_score}</b></div><div>Tickets: ${x.total} | Fail: ${x.fail} | Partial: ${x.partial}</div></div>`; }
+  document.getElementById('topPerformers').innerHTML = (data.top_performers || []).map(card).join('') || '<div class="muted">No data</div>';
+  document.getElementById('needsAttention').innerHTML = (data.needs_attention || []).map(card).join('') || '<div class="muted">No data</div>';
+}
+
+function renderRiskTable(data) {
+  const tbody = document.querySelector('#riskTable tbody');
+  const rows = data.risk_tickets || [];
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="muted">No high-risk active tickets found.</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => `<tr><td>${escapeHtml(r.issueKey)}</td><td>${escapeHtml(r.assignee)}</td><td>${escapeHtml(r.board)}</td><td>${r.score}</td><td>${statusPill(r.status)}</td><td>${escapeHtml((r.main_gaps||[]).join(' | '))}</td><td><button onclick="loadTicket('${escapeHtml(r.issueKey)}')">Load</button></td></tr>`).join('');
+}
+
+function populateAssigneeFilter(data) {
+  const sel = document.getElementById('assigneeFilter');
+  const assignees = (data.assignee_summary || []).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">All assignees</option>' + assignees.map(a => `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)} (${a.total})</option>`).join('');
+}
+
+function applyAssigneeFilter() {
+  if (!managerData) return;
+  const selected = document.getElementById('assigneeFilter').value;
+  const weakOnly = document.getElementById('weakOnly').checked;
+  let tickets = (managerData.tickets || []).map(t => {
+    const ni = t.normalized_issue || {}; const a = t.assessment || {}; const key = ni.issue_key || t.issueKey || '';
+    return { issueKey:key, board:key.includes('-') ? key.split('-')[0] : '', assignee:ni.assignee || 'Unassigned', summary:ni.summary || '', score:a.score || 0, status:a.status || '', main_gaps:a.issues || [] };
+  });
+  if (selected) tickets = tickets.filter(t => t.assignee === selected);
+  if (weakOnly) tickets = tickets.filter(t => t.status !== 'PASS' || t.score < 80);
+  const avg = tickets.length ? Math.round(tickets.reduce((s,t)=>s+t.score,0)/tickets.length*10)/10 : 0;
+  const nonPass = tickets.filter(t => t.status !== 'PASS').length;
+  document.getElementById('personStats').innerHTML = `<div class="card span-3 kpi"><div><div class="label">Selected Tickets</div><div class="value">${tickets.length}</div></div></div><div class="card span-3 kpi"><div><div class="label">Avg Score</div><div class="value">${avg}%</div></div></div><div class="card span-3 kpi"><div><div class="label">Non-Pass</div><div class="value red">${nonPass}</div></div></div><div class="card span-3 kpi"><div><div class="label">Owner</div><div class="value" style="font-size:18px;">${escapeHtml(selected || 'All')}</div></div></div>`;
+  const tbody = document.querySelector('#personTable tbody');
+  if (!tickets.length) { tbody.innerHTML = '<tr><td colspan="7" class="muted">No tickets for this filter.</td></tr>'; return; }
+  tickets.sort((a,b)=>a.score-b.score || a.issueKey.localeCompare(b.issueKey));
+  tbody.innerHTML = tickets.map(t => `<tr><td>${escapeHtml(t.issueKey)}</td><td>${escapeHtml(t.board)}</td><td>${t.score}</td><td>${statusPill(t.status)}</td><td>${escapeHtml(t.summary)}</td><td>${escapeHtml((t.main_gaps||[]).slice(0,4).join(' | '))}</td><td><button onclick="loadTicket('${escapeHtml(t.issueKey)}')">Load</button></td></tr>`).join('');
+}
+
+async function runManagerDashboard() {
+  const payload = {
+    projectKey: document.getElementById('projectKey').value,
+    jql: document.getElementById('jql').value,
+    maxResults: 0,
+    excludeDoneCompleted: document.getElementById('excludeDoneCompleted').checked
+  };
+  const res = await fetch('/api/tickets/manager-dashboard', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  managerData = data; setResult(data);
+  renderKpis(data); renderCharts(data); renderLeaderboards(data); renderRiskTable(data); populateAssigneeFilter(data); applyAssigneeFilter();
+}
+
+function exportManagerCsv(weakOnly) {
+  const projectKey = encodeURIComponent(document.getElementById('projectKey').value || '');
+  const jql = encodeURIComponent(document.getElementById('jql').value || '');
+  const excludeDone = encodeURIComponent(document.getElementById('excludeDoneCompleted').checked ? 'true' : 'false');
+  const endpoint = weakOnly ? '/api/tickets/bulk-dashboard-weak.csv' : '/api/tickets/bulk-dashboard.csv';
+  window.open(`${endpoint}?projectKey=${projectKey}&jql=${jql}&maxResults=0&excludeDoneCompleted=${excludeDone}`, '_blank');
+}
+
+function capacityStatusPill(status) {
+  const s = String(status || '').toUpperCase();
+  const c = s === 'AVAILABLE' ? 'capacity-ok' : s === 'NEAR_CAPACITY' ? 'capacity-warn' : s === 'OVER_ALLOCATED' ? 'capacity-bad' : '';
+  return `<span class="pill ${c}">${escapeHtml(status)}</span>`;
+}
+
+function useSelectedAssigneeForCapacity() {
+  const selected = document.getElementById('assigneeFilter')?.value || '';
+  if (!selected) {
+    alert('Select an assignee in the Manager Drill-down first, or type the assignee name manually.');
+    return;
+  }
+  document.getElementById('capacityAssignee').value = selected;
+}
+
+function renderCapacity(data) {
+  const s = data.summary || {};
+  document.getElementById('capacityKpis').innerHTML = `
+    <div class="card span-3 kpi"><div><div class="label">Active Points</div><div class="value">${s.total_story_points || 0}</div></div><div class="note">${s.active_ticket_count || 0} active tickets</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Utilisation</div><div class="value">${s.utilization_percent || 0}%</div></div><div class="note">${capacityStatusPill(s.capacity_status || 'UNKNOWN')}</div></div>
+    <div class="card span-3 kpi"><div><div class="label">In Progress Points</div><div class="value">${s.in_progress_story_points || 0}</div></div><div class="note">Status Category: In Progress</div></div>
+    <div class="card span-3 kpi"><div><div class="label">To Do Points</div><div class="value">${s.todo_story_points || 0}</div></div><div class="note">Status Category: To Do</div></div>
+  `;
+  const sp = data.storyPointsField || {};
+  const warning = [];
+  warning.push(`JQL used: ${data.jql || ''}`);
+  warning.push(`Story Points field: ${sp.field_id || 'not configured'} (${sp.source || 'unknown'})`);
+  warning.push(`Unpointed active tickets: ${s.unpointed_ticket_count || 0}`);
+  if (sp.warning) warning.push(sp.warning);
+  document.getElementById('capacityWarning').textContent = warning.join(' | ');
+
+  if (capacityProjectChart) capacityProjectChart.destroy();
+  if (capacityStatusChart) capacityStatusChart.destroy();
+  const projects = data.by_project || [];
+  const statuses = data.by_status_category || [];
+  capacityProjectChart = new Chart(document.getElementById('capacityProjectChart'), {
+    type:'bar',
+    data:{ labels:projects.map(x=>x.name), datasets:[{ label:'Story Points', data:projects.map(x=>x.story_points) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+  capacityStatusChart = new Chart(document.getElementById('capacityStatusChart'), {
+    type:'bar',
+    data:{ labels:statuses.map(x=>x.name), datasets:[{ label:'Story Points', data:statuses.map(x=>x.story_points) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const tbody = document.querySelector('#capacityTable tbody');
+  const rows = data.tickets || [];
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">No active tickets found for this assignee/scope.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(t => `
+    <tr>
+      <td>${escapeHtml(t.issueKey)}</td>
+      <td>${escapeHtml(t.projectKey)}</td>
+      <td>${escapeHtml(t.status)}</td>
+      <td>${escapeHtml(t.statusCategory)}</td>
+      <td>${t.storyPoints || 0}</td>
+      <td>${escapeHtml(t.issueType)}</td>
+      <td>${escapeHtml(t.summary)}</td>
+    </tr>
+  `).join('');
+}
+
+async function runCapacityCheck() {
+  const assignee = document.getElementById('capacityAssignee').value.trim();
+  if (!assignee) return alert('Enter an assignee name first.');
+  const payload = {
+    assignee,
+    projectKeys: document.getElementById('capacityProjects').value,
+    storyPointsFieldId: document.getElementById('capacityStoryPointsField').value.trim(),
+    sprintCapacityPoints: Number(document.getElementById('capacityPoints').value || 20),
+    jqlOverride: document.getElementById('capacityJql').value.trim(),
+    maxResults: 0
+  };
+  const res = await fetch('/api/tickets/assignee-capacity', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  setResult(data);
+  if (!res.ok) {
+    alert(data.error || 'Capacity check failed.');
+    return;
+  }
+  renderCapacity(data);
+}
+
+</script>
+</body>
+</html>

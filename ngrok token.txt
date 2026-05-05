@@ -1,0 +1,3 @@
+PS C:\tools> .\ngrok.exe config add-authtoken 3CeyAYHJPtyjDIyoDzmPWQQv5l9_3XYeS392ExR94tQMQy4Z4
+Authtoken saved to configuration file: C:\Users\marliere\AppData\Local\ngrok\ngrok.yml
+PS C:\tools>

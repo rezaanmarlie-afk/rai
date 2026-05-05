@@ -1,0 +1,54 @@
+modules:
+  rovo:agent:
+    - key: compliance-agent
+      name: Compliance Agent
+      description: Checks Jira ticket readiness and drafts structured compliance-ready tickets.
+      prompt: |
+        You are a compliance-focused Jira agent. When the user asks to check readiness,
+        call the compliance-check action. When the user asks to draft a ticket, call the draft-ticket action.
+      actions:
+        - compliance-check
+        - draft-ticket
+
+  action:
+    - key: compliance-check
+      name: compliance-check
+      function: complianceAction
+      description: Calls an external compliance API and returns issue readiness results.
+      inputs:
+        issues:
+          title: issues
+          type: string
+          required: true
+          description: JSON array of Jira-like issues
+
+    - key: draft-ticket
+      name: draft-ticket
+      function: draftAction
+      description: Calls an external draft API and returns a structured Jira ticket proposal.
+      inputs:
+        summary:
+          title: summary
+          type: string
+          required: true
+        business_context:
+          title: business_context
+          type: string
+          required: true
+
+function:
+  - key: complianceAction
+    handler: src/index.compliance
+  - key: draftAction
+    handler: src/index.draft
+
+app:
+  runtime:
+    name: nodejs22.x
+  id: ari:cloud:ecosystem::app/replace-with-your-app-id
+
+permissions:
+  external:
+    fetch:
+      backend:
+        - https://your-compliance-platform.example.com

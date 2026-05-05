@@ -1,0 +1,8 @@
+{
+  "name": "rovo-compliance-agent",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@forge/api": "^5.1.0"
+  }
+}

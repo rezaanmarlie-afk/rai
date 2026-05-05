@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jira Ticket Quality Compliance Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    .header {
+      background: #0f172a;
+      color: white;
+      padding: 20px 24px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: bold;
+      margin-top: 12px;
+      margin-bottom: 6px;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 12px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .secondary {
+      background: #475569;
+    }
+
+    .secondary:hover {
+      background: #334155;
+    }
+
+    .result {
+      background: #0b1220;
+      color: #e5e7eb;
+      padding: 14px;
+      border-radius: 10px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      min-height: 140px;
+    }
+
+    .score-box {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: bold;
+      font-size: 13px;
+      display: inline-block;
+    }
+
+    .green { background: #dcfce7; color: #166534; }
+    .yellow { background: #fef9c3; color: #854d0e; }
+    .red { background: #fee2e2; color: #991b1b; }
+
+    .muted {
+      color: #64748b;
+      font-size: 13px;
+    }
+
+    ul {
+      padding-left: 18px;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Jira Ticket Quality Compliance Tool</h1>
+      <div>Check live Jira issues, compare ticket quality, and create improved tickets.</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Live Jira Search</h2>
+        <div class="muted">Search by project or custom JQL.</div>
+
+        <label for="projectKey">Project Key</label>
+        <input id="projectKey" value="{{ default_project }}" placeholder="ARC or NMGOS" />
+
+        <label for="jql">Custom JQL (optional)</label>
+        <input id="jql" placeholder="project = ARC ORDER BY created DESC" />
+
+        <label for="maxResults">Max Results</label>
+        <input id="maxResults" type="number" value="10" />
+
+        <button onclick="searchIssues()">Search Jira</button>
+        <button class="secondary" onclick="checkMe()">Check Jira Identity</button>
+      </div>
+
+      <div class="card">
+        <h2>Get One Jira Issue</h2>
+        <div class="muted">Fetch a full issue by key.</div>
+
+        <label for="issueKey">Issue Key</label>
+        <input id="issueKey" placeholder="ARC-827 or NMGOS-3846" />
+
+        <button onclick="getIssue()">Get Issue</button>
+        <button class="secondary" onclick="checkLiveIssue()">Check Live Ticket Quality</button>
+      </div>
+
+      <div class="card full">
+        <h2>Manual Ticket Quality Check</h2>
+
+        <label for="manualSummary">Summary</label>
+        <input id="manualSummary" placeholder="Enter a summary" />
+
+        <label for="manualDescription">Description</label>
+        <textarea id="manualDescription" placeholder="Paste description or business context here"></textarea>
+
+        <label for="manualIssueType">Issue Type</label>
+        <input id="manualIssueType" value="Story" />
+
+        <label for="manualPriority">Priority</label>
+        <input id="manualPriority" value="Medium" />
+
+        <button onclick="manualCheck()">Check Ticket Quality</button>
+        <button class="secondary" onclick="rewriteTicket()">Rewrite Ticket</button>
+      </div>
+
+      <div class="card full">
+        <h2>Create Jira Ticket</h2>
+        <div class="muted">Create a new issue in the selected Jira project.</div>
+
+        <label for="createProjectKey">Project Key</label>
+        <input id="createProjectKey" value="{{ default_project }}" placeholder="ARC or NMGOS" />
+
+        <label for="createIssueType">Issue Type</label>
+        <select id="createIssueType">
+          <option value="Story">Story</option>
+          <option value="Task">Task</option>
+          <option value="Bug">Bug</option>
+        </select>
+
+        <label for="createSummary">Summary</label>
+        <input id="createSummary" placeholder="Enter issue summary" />
+
+        <label for="createDescription">Description</label>
+        <textarea id="createDescription" placeholder="Enter issue description"></textarea>
+
+        <button onclick="createIssue()">Create Jira Issue</button>
+      </div>
+
+      <div class="card full">
+        <h2>Assessment Snapshot</h2>
+        <div id="scoreSummary" class="score-box"></div>
+      </div>
+
+      <div class="card full">
+        <h2>Result</h2>
+        <div id="result" class="result">Ready.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function setResult(data) {
+      document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+    }
+
+    function setAssessment(assessment) {
+      const box = document.getElementById("scoreSummary");
+      box.innerHTML = "";
+
+      if (!assessment) {
+        return;
+      }
+
+      const scoreClass =
+        assessment.score >= 80 ? "green" :
+        assessment.score >= 60 ? "yellow" : "red";
+
+      box.innerHTML = `
+        <span class="pill ${scoreClass}">Score: ${assessment.score}</span>
+        <span class="pill ${scoreClass}">Status: ${assessment.status}</span>
+        <span class="pill ${scoreClass}">Compliance: ${assessment.compliance}</span>
+      `;
+    }
+
+    async function apiCall(url, method, payload) {
+      const options = {
+        method: method,
+        headers: { "Content-Type": "application/json" }
+      };
+
+      if (payload) {
+        options.body = JSON.stringify(payload);
+      }
+
+      const response = await fetch(url, options);
+      const data = await response.json();
+      setResult(data);
+      return data;
+    }
+
+    async function checkMe() {
+      setAssessment(null);
+      await apiCall("/api/jira/me", "GET");
+    }
+
+    async function searchIssues() {
+      setAssessment(null);
+
+      const payload = {
+        projectKey: document.getElementById("projectKey").value,
+        jql: document.getElementById("jql").value,
+        maxResults: Number(document.getElementById("maxResults").value || 10),
+        fields: [
+          "summary",
+          "description",
+          "status",
+          "assignee",
+          "issuetype",
+          "labels",
+          "priority",
+          "components",
+          "created",
+          "updated",
+          "reporter"
+        ]
+      };
+
+      await apiCall("/api/jira/search", "POST", payload);
+    }
+
+    async function getIssue() {
+      setAssessment(null);
+
+      const issueKey = document.getElementById("issueKey").value.trim();
+      if (!issueKey) {
+        alert("Enter an issue key first.");
+        return;
+      }
+
+      const response = await fetch(`/api/jira/issue/${encodeURIComponent(issueKey)}`);
+      const data = await response.json();
+      setResult(data);
+
+      const fields = data?.jira_response?.fields || {};
+      document.getElementById("manualSummary").value = fields.summary || "";
+      document.getElementById("manualDescription").value = "";
+      if (fields.description) {
+        document.getElementById("manualDescription").value = JSON.stringify(fields.description, null, 2);
+      }
+    }
+
+    async function checkLiveIssue() {
+      const issueKey = document.getElementById("issueKey").value.trim();
+      if (!issueKey) {
+        alert("Enter an issue key first.");
+        return;
+      }
+
+      const data = await apiCall("/api/tickets/check-live", "POST", { issueKey });
+      setAssessment(data.assessment);
+    }
+
+    async function manualCheck() {
+      const payload = {
+        summary: document.getElementById("manualSummary").value,
+        description: document.getElementById("manualDescription").value,
+        issueType: document.getElementById("manualIssueType").value,
+        priority: document.getElementById("manualPriority").value
+      };
+
+      const data = await apiCall("/api/tickets/check", "POST", payload);
+      setAssessment(data);
+    }
+
+    async function rewriteTicket() {
+      const payload = {
+        summary: document.getElementById("manualSummary").value,
+        description: document.getElementById("manualDescription").value
+      };
+
+      const data = await apiCall("/api/tickets/rewrite", "POST", payload);
+
+      if (data.rewritten_description) {
+        document.getElementById("createSummary").value = payload.summary;
+        document.getElementById("createDescription").value = data.rewritten_description;
+      }
+    }
+
+    async function createIssue() {
+      const payload = {
+        projectKey: document.getElementById("createProjectKey").value,
+        issueType: document.getElementById("createIssueType").value,
+        summary: document.getElementById("createSummary").value,
+        description: document.getElementById("createDescription").value
+      };
+
+      setAssessment(null);
+      await apiCall("/api/jira/create", "POST", payload);
+    }
+  </script>
+</body>
+</html>

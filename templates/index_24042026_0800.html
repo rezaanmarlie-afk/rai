@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jira Ticket Quality Compliance AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1f2937; }
+    .container { max-width: 1440px; margin: 24px auto; padding: 0 16px; }
+    .header { background: #0f172a; color: white; padding: 20px 24px; border-radius: 12px; margin-bottom: 20px; }
+    .header h1 { margin: 0 0 8px 0; font-size: 28px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card { background: white; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .card h2 { margin-top: 0; font-size: 18px; }
+    .full { grid-column: 1 / -1; }
+    label { display: block; font-size: 13px; font-weight: bold; margin-top: 12px; margin-bottom: 6px; }
+    input, textarea, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
+    textarea { min-height: 90px; resize: vertical; }
+    button { margin-top: 12px; background: #2563eb; color: white; border: none; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 14px; font-weight: bold; margin-right: 8px; margin-bottom: 8px; }
+    button:hover { background: #1d4ed8; }
+    .secondary { background: #475569; }
+    .secondary:hover { background: #334155; }
+    .warning { background: #b45309; }
+    .warning:hover { background: #92400e; }
+    .success { background: #15803d; }
+    .success:hover { background: #166534; }
+    .result { background: #0b1220; color: #e5e7eb; padding: 14px; border-radius: 10px; overflow: auto; white-space: pre-wrap; font-family: Consolas, monospace; font-size: 13px; min-height: 140px; }
+    .score-box { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+    .pill { padding: 8px 12px; border-radius: 999px; font-weight: bold; font-size: 13px; display: inline-block; }
+    .green { background: #dcfce7; color: #166534; }
+    .yellow { background: #fef9c3; color: #854d0e; }
+    .red { background: #fee2e2; color: #991b1b; }
+    .muted { color: #64748b; font-size: 13px; }
+    .evidence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .evidence-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+    .evidence-card h3 { margin: 0 0 8px 0; font-size: 15px; }
+    .evidence-card ul { margin: 0; padding-left: 18px; }
+    .evidence-card li { margin-bottom: 6px; font-size: 13px; line-height: 1.4; }
+    .human-grid, .breakdown-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; }
+    .metric .label { font-size: 12px; color: #64748b; }
+    .metric .value { font-size: 24px; font-weight: bold; margin-top: 4px; }
+    .charts-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .chart-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; text-align: left; vertical-align: top; font-size: 13px; }
+    th { background: #f8fafc; }
+    .table-btn { margin: 0; padding: 6px 10px; font-size: 12px; }
+    @media (max-width: 900px) { .grid, .evidence-grid, .human-grid, .metrics-grid, .charts-grid, .breakdown-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Jira Ticket Quality Compliance AI</h1>
+      <div>Bulk dashboard + single-ticket AI enhancement, exports, charts, auto-clean, and hierarchy-aware breakdown tickets.</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Bulk Project Dashboard</h2>
+        <label for="projectKey">Project Key</label>
+        <input id="projectKey" value="{{ default_project }}" placeholder="ARC or NMGOS" />
+        <label for="jql">Custom JQL (optional)</label>
+        <input id="jql" placeholder="project = NMGOS ORDER BY created DESC" />
+        <label for="maxResults">Max Results</label>
+        <input id="maxResults" type="number" value="20" />
+        <button onclick="runBulkDashboard()">Run Bulk Dashboard</button>
+        <button class="secondary" onclick="checkMe()">Check Jira Identity</button>
+        <button class="secondary" onclick="exportFullCsv()">Export Full CSV</button>
+        <button class="secondary" onclick="exportWeakCsv()">Export Weak Tickets CSV</button>
+      </div>
+
+      <div class="card">
+        <h2>Single Ticket Workspace</h2>
+        <label for="issueKey">Issue Key</label>
+        <input id="issueKey" placeholder="ARC-827 or NMGOS-3846" />
+        <button onclick="getIssue()">Get Issue</button>
+        <button class="secondary" onclick="checkLiveIssue()">Check Live Ticket Quality</button>
+        <button class="secondary" onclick="rewriteLiveIssue()">AI Rewrite Live Ticket</button>
+        <button class="secondary" onclick="autoCleanLiveIssue()">Auto Clean & Normalize Ticket</button>
+      </div>
+
+      <div class="card full">
+        <h2>Bulk Dashboard Metrics</h2>
+        <div id="bulkMetrics" class="metrics-grid"><div class="metric"><div class="label">Ready</div><div class="value">-</div></div></div>
+      </div>
+
+      <div class="card full">
+        <h2>Charts</h2>
+        <div class="charts-grid">
+          <div class="chart-card"><h3>Pass / Partial / Fail</h3><canvas id="statusChart"></canvas></div>
+          <div class="chart-card"><h3>Score Distribution</h3><canvas id="scoreChart"></canvas></div>
+          <div class="chart-card"><h3>Common Gaps</h3><canvas id="gapsChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card full">
+        <h2>Bulk Ticket Results</h2>
+        <div style="overflow:auto;">
+          <table id="bulkTable">
+            <thead><tr><th>Issue</th><th>Summary</th><th>Score</th><th>Status</th><th>Priority</th><th>Description</th><th>Labels</th><th>Components</th><th>Acceptance Evidence</th><th>Action</th></tr></thead>
+            <tbody><tr><td colspan="10" class="muted">Run the bulk dashboard to load results.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card full">
+        <h2>Manual Ticket Editor</h2>
+        <label for="manualSummary">Summary</label>
+        <input id="manualSummary" placeholder="Enter a summary" />
+        <label for="manualDescription">Description</label>
+        <textarea id="manualDescription" placeholder="Paste description or business context here"></textarea>
+        <label for="manualIssueType">Issue Type</label>
+        <input id="manualIssueType" value="Story" />
+        <label for="manualPriority">Priority</label>
+        <input id="manualPriority" value="Medium" />
+        <button onclick="manualCheck()">Check Ticket Quality</button>
+        <button class="secondary" onclick="rewriteTicket()">AI Rewrite Ticket</button>
+        <button class="secondary" onclick="autoCleanManualTicket()">Auto Clean & Normalize Ticket</button>
+        <button class="warning" onclick="updateExistingIssue()">Update Existing Jira Ticket</button>
+      </div>
+
+      <div class="card full">
+        <h2>Human Input for Enhancement</h2>
+        <div class="human-grid">
+          <div><label for="hiBusinessObjective">Business Objective</label><textarea id="hiBusinessObjective"></textarea></div>
+          <div><label for="hiProblemStatement">Problem Statement</label><textarea id="hiProblemStatement"></textarea></div>
+          <div><label for="hiSystems">Systems / Domains Involved</label><textarea id="hiSystems"></textarea></div>
+          <div><label for="hiDependencies">Dependencies</label><textarea id="hiDependencies"></textarea></div>
+          <div><label for="hiRisks">Risks / Controls</label><textarea id="hiRisks"></textarea></div>
+          <div><label for="hiSuccess">Success Criteria</label><textarea id="hiSuccess"></textarea></div>
+          <div><label for="hiValidation">Validation Steps</label><textarea id="hiValidation"></textarea></div>
+          <div><label for="hiStakeholders">Stakeholders / Owners</label><textarea id="hiStakeholders"></textarea></div>
+          <div><label for="hiApprovals">Approvals Needed</label><textarea id="hiApprovals"></textarea></div>
+          <div><label for="hiNotes">Additional Notes</label><textarea id="hiNotes"></textarea></div>
+        </div>
+        <button class="success" onclick="enhanceWithHumanInput()">Enhance with Human Input</button>
+      </div>
+
+      <div class="card full">
+        <h2>Suggest Breakdown Tickets</h2>
+        <div class="muted">Hierarchy-aware: Initiative → Epic, Epic/Feature → Story, Story/Task/Bug → Sub-task.</div>
+        <div class="breakdown-grid">
+          <div>
+            <label for="storyPointsFieldId">Story Points Field ID (optional for creation)</label>
+            <input id="storyPointsFieldId" placeholder="e.g. customfield_10016" />
+          </div>
+          <div>
+            <label for="breakdownProjectKey">Project Key</label>
+            <input id="breakdownProjectKey" value="{{ default_project }}" />
+          </div>
+        </div>
+        <button class="secondary" onclick="suggestBreakdownLive()">Suggest Breakdown Tickets</button>
+        <button class="success" onclick="createSuggestedTickets()">Create Suggested Tickets</button>
+        <div style="overflow:auto;">
+          <table id="breakdownTable">
+            <thead><tr><th>Create</th><th>Issue Type</th><th>Summary</th><th>Story Points</th><th>Description</th></tr></thead>
+            <tbody><tr><td colspan="5" class="muted">Load a parent ticket and generate suggestions.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card full">
+        <h2>Create Jira Ticket</h2>
+        <label for="createProjectKey">Project Key</label>
+        <input id="createProjectKey" value="{{ default_project }}" />
+        <label for="createIssueType">Issue Type</label>
+        <select id="createIssueType"><option value="Story">Story</option><option value="Task">Task</option><option value="Bug">Bug</option><option value="Feature">Feature</option><option value="Epic">Epic</option><option value="Initiative">Initiative</option></select>
+        <label for="createSummary">Summary</label>
+        <input id="createSummary" />
+        <label for="createDescription">Description</label>
+        <textarea id="createDescription"></textarea>
+        <button onclick="createIssue()">Create Jira Issue</button>
+      </div>
+
+      <div class="card full">
+        <h2>Assessment Snapshot</h2>
+        <div id="scoreSummary" class="score-box"></div>
+      </div>
+
+      <div class="card full">
+        <h2>Evidence Extraction</h2>
+        <div id="evidenceArea" class="evidence-grid"><div class="evidence-card"><h3>Ready</h3><div class="muted">Run a live or manual check.</div></div></div>
+      </div>
+
+      <div class="card full">
+        <h2>Result</h2>
+        <div id="result" class="result">Ready.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let statusChart = null, scoreChart = null, gapsChart = null, currentBreakdown = null;
+
+    function setResult(data) { document.getElementById('result').textContent = JSON.stringify(data, null, 2); }
+    function escapeHtml(text) { return String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
+    async function apiCall(url, method, payload) {
+      const options = { method, headers: { 'Content-Type': 'application/json' } };
+      if (payload) options.body = JSON.stringify(payload);
+      const response = await fetch(url, options);
+      const data = await response.json();
+      setResult(data); return data;
+    }
+    function setAssessment(assessment) {
+      const box = document.getElementById('scoreSummary'); box.innerHTML = '';
+      if (!assessment) return;
+      const scoreClass = assessment.score >= 80 ? 'green' : assessment.score >= 60 ? 'yellow' : 'red';
+      box.innerHTML = `<span class="pill ${scoreClass}">Score: ${assessment.score}</span><span class="pill ${scoreClass}">Status: ${assessment.status}</span><span class="pill ${scoreClass}">Compliance: ${assessment.compliance}</span>`;
+    }
+    function renderEvidenceSection(title, items) {
+      if (!items || items.length === 0) return `<div class="evidence-card"><h3>${title}</h3><div class="muted">No evidence detected.</div></div>`;
+      return `<div class="evidence-card"><h3>${title}</h3><ul>${items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`;
+    }
+    function setEvidence(evidence) {
+      const area = document.getElementById('evidenceArea');
+      if (!evidence) { area.innerHTML = `<div class="evidence-card"><h3>Ready</h3><div class="muted">Run a live or manual check.</div></div>`; return; }
+      const acceptanceItems = [...(evidence.acceptance?.methods || []).map(x => `Method detected: ${x}`), ...(evidence.acceptance?.evidence || [])];
+      const depItems = [...(evidence.dependencies?.methods || []).map(x => `Method detected: ${x}`), ...(evidence.dependencies?.evidence || [])];
+      const dorDodItems = [...(evidence.dor_dod?.dor_found ? ['Definition of Ready detected'] : []), ...(evidence.dor_dod?.dod_found ? ['Definition of Done detected'] : []), ...(evidence.dor_dod?.dor_evidence || []), ...(evidence.dor_dod?.dod_evidence || [])];
+      area.innerHTML = `${renderEvidenceSection('Business Context', evidence.business_context?.evidence || [])}${renderEvidenceSection('Scope', evidence.scope?.evidence || [])}${renderEvidenceSection('Dependencies', depItems)}${renderEvidenceSection('Acceptance / Success Criteria', [...(evidence.success_criteria?.evidence || []), ...acceptanceItems])}${renderEvidenceSection('DoR / DoD', dorDodItems)}${renderEvidenceSection('Risk / Safety', evidence.risk?.evidence || [])}`;
+    }
+    function renderBulkMetrics(summary) {
+      const el = document.getElementById('bulkMetrics');
+      if (!summary) { el.innerHTML = `<div class="metric"><div class="label">Ready</div><div class="value">-</div></div>`; return; }
+      el.innerHTML = `
+        <div class="metric"><div class="label">Total Tickets</div><div class="value">${summary.total_tickets}</div></div>
+        <div class="metric"><div class="label">Average Score</div><div class="value">${summary.average_score}</div></div>
+        <div class="metric"><div class="label">PASS</div><div class="value">${summary.pass_count}</div></div>
+        <div class="metric"><div class="label">PARTIAL</div><div class="value">${summary.partial_count}</div></div>
+        <div class="metric"><div class="label">FAIL</div><div class="value">${summary.fail_count}</div></div>
+        <div class="metric"><div class="label">Missing Description</div><div class="value">${summary.missing_description_count}</div></div>
+        <div class="metric"><div class="label">Missing Labels</div><div class="value">${summary.missing_labels_count}</div></div>
+        <div class="metric"><div class="label">Missing Components</div><div class="value">${summary.missing_components_count}</div></div>
+        <div class="metric"><div class="label">Missing Acceptance Evidence</div><div class="value">${summary.missing_acceptance_count}</div></div>`;
+    }
+    function renderBulkTable(tickets) {
+      const tbody = document.querySelector('#bulkTable tbody');
+      if (!tickets || tickets.length === 0) { tbody.innerHTML = `<tr><td colspan="10" class="muted">No tickets returned.</td></tr>`; return; }
+      tbody.innerHTML = tickets.map(t => {
+        const ni = t.normalized_issue, a = t.assessment;
+        const acceptanceFound = a.evidence.acceptance.found || a.evidence.dor_dod.dor_found || a.evidence.dor_dod.dod_found || a.evidence.success_criteria.found;
+        return `<tr><td>${escapeHtml(t.issueKey || '')}</td><td>${escapeHtml(ni.summary || '')}</td><td>${a.score}</td><td>${escapeHtml(a.status || '')}</td><td>${escapeHtml(ni.priority || '')}</td><td>${ni.description ? 'Yes' : 'No'}</td><td>${(ni.labels || []).length}</td><td>${(ni.components || []).length}</td><td>${acceptanceFound ? 'Yes' : 'No'}</td><td><button class="table-btn" onclick="loadTicketFromBulk('${escapeHtml(t.issueKey)}')">Load</button></td></tr>`;
+      }).join('');
+    }
+    function renderCharts(data) {
+      if (!data || !data.summary || !data.tickets) return;
+      const s = data.summary, tickets = data.tickets;
+      const scoreBands = {'0-39':0,'40-59':0,'60-79':0,'80-100':0};
+      tickets.forEach(t => { const score = t.assessment.score; if (score < 40) scoreBands['0-39']++; else if (score < 60) scoreBands['40-59']++; else if (score < 80) scoreBands['60-79']++; else scoreBands['80-100']++; });
+      const gapCounts = {'Missing Description': s.missing_description_count, 'Missing Labels': s.missing_labels_count, 'Missing Components': s.missing_components_count, 'Missing Acceptance Evidence': s.missing_acceptance_count};
+      if (statusChart) statusChart.destroy(); if (scoreChart) scoreChart.destroy(); if (gapsChart) gapsChart.destroy();
+      statusChart = new Chart(document.getElementById('statusChart'), { type: 'bar', data: { labels: ['PASS','PARTIAL','FAIL'], datasets: [{ label: 'Tickets', data: [s.pass_count,s.partial_count,s.fail_count] }] }, options: { responsive: true } });
+      scoreChart = new Chart(document.getElementById('scoreChart'), { type: 'bar', data: { labels: Object.keys(scoreBands), datasets: [{ label: 'Tickets', data: Object.values(scoreBands) }] }, options: { responsive: true } });
+      gapsChart = new Chart(document.getElementById('gapsChart'), { type: 'bar', data: { labels: Object.keys(gapCounts), datasets: [{ label: 'Count', data: Object.values(gapCounts) }] }, options: { responsive: true } });
+    }
+    function humanInputPayload() {
+      return {
+        business_objective: document.getElementById('hiBusinessObjective').value,
+        problem_statement: document.getElementById('hiProblemStatement').value,
+        systems_involved: document.getElementById('hiSystems').value,
+        dependencies: document.getElementById('hiDependencies').value,
+        risks: document.getElementById('hiRisks').value,
+        success_criteria: document.getElementById('hiSuccess').value,
+        validation_steps: document.getElementById('hiValidation').value,
+        stakeholders: document.getElementById('hiStakeholders').value,
+        approvals_needed: document.getElementById('hiApprovals').value,
+        additional_notes: document.getElementById('hiNotes').value
+      };
+    }
+    function exportFullCsv() {
+      const projectKey = encodeURIComponent(document.getElementById('projectKey').value || '');
+      const jql = encodeURIComponent(document.getElementById('jql').value || '');
+      const maxResults = encodeURIComponent(document.getElementById('maxResults').value || '20');
+      window.open(`/api/tickets/bulk-dashboard.csv?projectKey=${projectKey}&jql=${jql}&maxResults=${maxResults}`, '_blank');
+    }
+    function exportWeakCsv() {
+      const projectKey = encodeURIComponent(document.getElementById('projectKey').value || '');
+      const jql = encodeURIComponent(document.getElementById('jql').value || '');
+      const maxResults = encodeURIComponent(document.getElementById('maxResults').value || '20');
+      window.open(`/api/tickets/bulk-dashboard-weak.csv?projectKey=${projectKey}&jql=${jql}&maxResults=${maxResults}`, '_blank');
+    }
+    function loadTicketFromBulk(issueKey) { document.getElementById('issueKey').value = issueKey; getIssue(); checkLiveIssue(); }
+    async function checkMe() { setAssessment(null); setEvidence(null); await apiCall('/api/jira/me', 'GET'); }
+    async function runBulkDashboard() {
+      setAssessment(null); setEvidence(null);
+      const data = await apiCall('/api/tickets/bulk-dashboard', 'POST', { projectKey: document.getElementById('projectKey').value, jql: document.getElementById('jql').value, maxResults: Number(document.getElementById('maxResults').value || 20) });
+      renderBulkMetrics(data.summary); renderBulkTable(data.tickets || []); renderCharts(data);
+    }
+    async function getIssue() {
+      setAssessment(null); setEvidence(null);
+      const issueKey = document.getElementById('issueKey').value.trim(); if (!issueKey) return alert('Enter an issue key first.');
+      const response = await fetch(`/api/jira/issue/${encodeURIComponent(issueKey)}`); const data = await response.json(); setResult(data);
+      const fields = data?.jira_response?.fields || {};
+      document.getElementById('manualSummary').value = fields.summary || '';
+      document.getElementById('manualDescription').value = '';
+      document.getElementById('manualIssueType').value = fields.issuetype?.name || 'Story';
+      document.getElementById('manualPriority').value = fields.priority?.name || 'Medium';
+    }
+    async function checkLiveIssue() {
+      const issueKey = document.getElementById('issueKey').value.trim(); if (!issueKey) return alert('Enter an issue key first.');
+      const data = await apiCall('/api/tickets/check-live', 'POST', { issueKey });
+      setAssessment(data.assessment); setEvidence(data.assessment?.evidence || null);
+      if (data.normalized_issue) {
+        document.getElementById('manualSummary').value = data.normalized_issue.summary || '';
+        document.getElementById('manualDescription').value = data.normalized_issue.description || '';
+        document.getElementById('manualIssueType').value = data.normalized_issue.issue_type || 'Story';
+        document.getElementById('manualPriority').value = data.normalized_issue.priority || 'Medium';
+      }
+    }
+    async function rewriteLiveIssue() {
+      const issueKey = document.getElementById('issueKey').value.trim(); if (!issueKey) return alert('Enter an issue key first.');
+      const data = await apiCall('/api/tickets/rewrite-live', 'POST', { issueKey });
+      const rewrite = data.rewrite || {}, normalized = data.normalized_issue || {};
+      if (rewrite.rewritten_description) {
+        document.getElementById('manualSummary').value = normalized.summary || rewrite.summary || '';
+        document.getElementById('manualDescription').value = rewrite.rewritten_description;
+        document.getElementById('manualIssueType').value = normalized.issue_type || rewrite.issue_type || 'Story';
+        document.getElementById('createSummary').value = normalized.summary || rewrite.summary || '';
+        document.getElementById('createDescription').value = rewrite.rewritten_description;
+      }
+    }
+    async function autoCleanLiveIssue() {
+      const issueKey = document.getElementById('issueKey').value.trim(); if (!issueKey) return alert('Enter an issue key first.');
+      const data = await apiCall('/api/tickets/auto-clean-live', 'POST', { issueKey });
+      const cleaned = data.cleaned || {}, normalized = data.normalized_issue || {};
+      if (cleaned.normalized_description) {
+        document.getElementById('manualSummary').value = cleaned.summary || normalized.summary || '';
+        document.getElementById('manualDescription').value = cleaned.normalized_description;
+        document.getElementById('manualIssueType').value = cleaned.issue_type || normalized.issue_type || 'Story';
+        document.getElementById('createSummary').value = cleaned.summary || normalized.summary || '';
+        document.getElementById('createDescription').value = cleaned.normalized_description;
+      }
+    }
+    async function manualCheck() {
+      const data = await apiCall('/api/tickets/check', 'POST', { summary: document.getElementById('manualSummary').value, description: document.getElementById('manualDescription').value, issueType: document.getElementById('manualIssueType').value, priority: document.getElementById('manualPriority').value });
+      setAssessment(data); setEvidence(data.evidence || null);
+    }
+    async function rewriteTicket() {
+      const payload = { summary: document.getElementById('manualSummary').value, description: document.getElementById('manualDescription').value, issueType: document.getElementById('manualIssueType').value };
+      const data = await apiCall('/api/tickets/rewrite', 'POST', payload);
+      if (data.rewritten_description) {
+        document.getElementById('manualDescription').value = data.rewritten_description;
+        document.getElementById('createSummary').value = payload.summary;
+        document.getElementById('createDescription').value = data.rewritten_description;
+      }
+    }
+    async function autoCleanManualTicket() {
+      const payload = { summary: document.getElementById('manualSummary').value, description: document.getElementById('manualDescription').value, issueType: document.getElementById('manualIssueType').value };
+      const data = await apiCall('/api/tickets/auto-clean', 'POST', payload);
+      if (data.normalized_description) {
+        document.getElementById('manualSummary').value = data.summary || payload.summary || '';
+        document.getElementById('manualDescription').value = data.normalized_description;
+        document.getElementById('createSummary').value = data.summary || payload.summary || '';
+        document.getElementById('createDescription').value = data.normalized_description;
+      }
+    }
+    async function enhanceWithHumanInput() {
+      const issueKey = document.getElementById('issueKey').value.trim(); if (!issueKey) return alert('Enter an issue key first.');
+      const data = await apiCall('/api/tickets/enhance-with-input', 'POST', { issueKey, human_input: humanInputPayload() });
+      const enhanced = data.enhanced_rewrite || {}, normalized = data.normalized_issue || {};
+      if (enhanced.rewritten_description) {
+        document.getElementById('manualSummary').value = normalized.summary || enhanced.summary || '';
+        document.getElementById('manualDescription').value = enhanced.rewritten_description;
+        document.getElementById('createSummary').value = normalized.summary || enhanced.summary || '';
+        document.getElementById('createDescription').value = enhanced.rewritten_description;
+      }
+    }
+    async function suggestBreakdownLive() {
+      const issueKey = document.getElementById('issueKey').value.trim(); if (!issueKey) return alert('Enter an issue key first.');
+      const data = await apiCall('/api/tickets/suggest-breakdown-live', 'POST', { issueKey });
+      currentBreakdown = data;
+      renderBreakdownTable(data.suggestedChildren || []);
+    }
+    function renderBreakdownTable(items) {
+      const tbody = document.querySelector('#breakdownTable tbody');
+      if (!items || items.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="muted">No suggestions generated.</td></tr>`; return; }
+      tbody.innerHTML = items.map((item, idx) => `
+        <tr>
+          <td><input type="checkbox" class="breakdown-check" data-idx="${idx}" checked></td>
+          <td>${escapeHtml(item.issueType || '')}</td>
+          <td><input value="${escapeHtml(item.summary || '')}" data-field="summary" data-idx="${idx}"></td>
+          <td>${item.issueType === 'Story' ? `<input type="number" value="${item.storyPoints ?? ''}" data-field="storyPoints" data-idx="${idx}">` : '-'}</td>
+          <td><textarea data-field="description" data-idx="${idx}">${escapeHtml(item.description || '')}</textarea></td>
+        </tr>`).join('');
+    }
+    async function createSuggestedTickets() {
+      if (!currentBreakdown || !currentBreakdown.suggestedChildren) return alert('Generate suggestions first.');
+      const items = currentBreakdown.suggestedChildren.map((item, idx) => {
+        const checked = document.querySelector(`.breakdown-check[data-idx="${idx}"]`)?.checked;
+        if (!checked) return null;
+        const summary = document.querySelector(`[data-field="summary"][data-idx="${idx}"]`)?.value || item.summary;
+        const description = document.querySelector(`[data-field="description"][data-idx="${idx}"]`)?.value || item.description;
+        const storyPointsEl = document.querySelector(`[data-field="storyPoints"][data-idx="${idx}"]`);
+        const storyPoints = storyPointsEl ? Number(storyPointsEl.value || 0) : null;
+        return { ...item, summary, description, storyPoints: storyPoints || item.storyPoints };
+      }).filter(Boolean);
+      const data = await apiCall('/api/jira/create-batch', 'POST', {
+        projectKey: document.getElementById('breakdownProjectKey').value,
+        parentIssueKey: currentBreakdown.parentIssueKey,
+        parentIssueType: currentBreakdown.parentIssueType,
+        storyPointsFieldId: document.getElementById('storyPointsFieldId').value.trim(),
+        items
+      });
+      return data;
+    }
+    async function createIssue() {
+      await apiCall('/api/jira/create', 'POST', { projectKey: document.getElementById('createProjectKey').value, issueType: document.getElementById('createIssueType').value, summary: document.getElementById('createSummary').value, description: document.getElementById('createDescription').value });
+    }
+    async function updateExistingIssue() {
+      const issueKey = document.getElementById('issueKey').value.trim(); if (!issueKey) return alert('Enter the existing Jira issue key first.');
+      if (!confirm(`This will update ${issueKey} in Jira using the current manual summary and description. Continue?`)) return;
+      const data = await apiCall('/api/jira/update', 'POST', { issueKey, summary: document.getElementById('manualSummary').value, description: document.getElementById('manualDescription').value, issueType: document.getElementById('manualIssueType').value });
+      if (data.status_code === 204 || data.status_code === 200) alert(`Issue ${issueKey} updated successfully.`);
+    }
+  </script>
+</body>
+</html>

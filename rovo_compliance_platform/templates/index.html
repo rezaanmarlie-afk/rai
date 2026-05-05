@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div>
+        <h1>{{ title }}</h1>
+        <p>Python FastAPI prototype for Jira ticket drafting, compliance scoring, and Rovo-agent handoff.</p>
+      </div>
+      <span class="pill">v{{ version }}</span>
+    </header>
+
+    <section class="panel">
+      <h2>What this prototype does</h2>
+      <ul>
+        <li>Drafts better Jira tickets with required delivery metadata</li>
+        <li>Scores ticket readiness and compliance</li>
+        <li>Exposes a webhook shape a Forge Rovo agent can call</li>
+        <li>Leaves room to map your real Jira custom field IDs</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Sample compliance results</h2>
+      <div class="cards">
+        {% for item in report %}
+        <article class="card">
+          <div class="card-top">
+            <div>
+              <h3>{{ item.issue_key }}</h3>
+              <p>{{ item.summary }}</p>
+            </div>
+            <div class="score {% if item.risk == 'High' %}high{% elif item.risk == 'Medium' %}medium{% else %}low{% endif %}">
+              {{ item.score }}%
+            </div>
+          </div>
+          <p><strong>Risk:</strong> {{ item.risk }}</p>
+          <p>{{ item.recommendation }}</p>
+          <table>
+            <thead><tr><th>Rule</th><th>Status</th><th>Weight</th></tr></thead>
+            <tbody>
+              {% for rule in item.rule_results %}
+              <tr>
+                <td>{{ rule.description }}</td>
+                <td>{{ rule.status }}</td>
+                <td>{{ rule.weight }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Core API routes</h2>
+      <pre>/api/tickets/draft
+/api/compliance/check
+/api/jira/search
+/api/jira/create
+/api/rovo/webhook</pre>
+    </section>
+  </div>
+</body>
+</html>

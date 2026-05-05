@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ASOC Manager Ticket Quality Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --navy:#0f172a; --muted:#64748b; --border:#e2e8f0; --bg:#f5f7fb; --card:#ffffff;
+      --green:#166534; --amber:#854d0e; --red:#991b1b; --blue:#2563eb; --soft:#f8fafc;
+    }
+    body { font-family: Arial, sans-serif; margin:0; background:var(--bg); color:#1f2937; }
+    .container { max-width: 1440px; margin: 24px auto; padding: 0 16px; }
+    .hero { background:var(--navy); color:#fff; padding:24px; border-radius:16px; margin-bottom:18px; display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+    .hero h1 { margin:0 0 8px 0; font-size:30px; }
+    .hero p { margin:0; color:#cbd5e1; }
+    .nav a { color:#fff; text-decoration:none; background:#334155; padding:10px 14px; border-radius:10px; display:inline-block; }
+    .tabs { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+    .tab-btn { margin:0; background:#e2e8f0; color:#334155; border:1px solid #cbd5e1; }
+    .tab-btn.active { background:var(--navy); color:white; border-color:var(--navy); }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+    .grid { display:grid; grid-template-columns: repeat(12, 1fr); gap:16px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:18px; box-shadow:0 2px 8px rgba(15,23,42,.06); }
+    .span-12 { grid-column: span 12; } .span-8 { grid-column: span 8; } .span-6 { grid-column: span 6; } .span-4 { grid-column: span 4; } .span-3 { grid-column: span 3; }
+    h2, h3 { margin-top:0; }
+    label { display:block; font-size:13px; font-weight:700; margin:12px 0 6px; }
+    input, select { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #cbd5e1; border-radius:10px; font-size:14px; }
+    button { margin-top:12px; background:var(--blue); color:#fff; border:0; border-radius:10px; padding:11px 15px; cursor:pointer; font-size:14px; font-weight:700; margin-right:8px; }
+    button.secondary { background:#475569; } button.success { background:#15803d; } button.ghost { background:#e2e8f0; color:#334155; } button:hover { filter:brightness(.94); }
+    .muted { color:var(--muted); font-size:13px; }
+    .kpi { min-height:110px; display:flex; flex-direction:column; justify-content:space-between; }
+    .kpi .label { color:var(--muted); font-size:13px; font-weight:700; }
+    .kpi .value { font-size:34px; font-weight:800; margin-top:8px; }
+    .kpi .note { font-size:12px; color:var(--muted); }
+    .green { color:var(--green); } .amber { color:var(--amber); } .red { color:var(--red); }
+    .leader-grid, .user-results { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .person-card, .user-card { border:1px solid var(--border); border-radius:12px; padding:12px; background:var(--soft); }
+    .person-card strong, .user-card strong { display:block; margin-bottom:4px; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:10px; text-align:left; vertical-align:top; font-size:13px; }
+    th { background:#f8fafc; color:#334155; }
+    .pill { display:inline-block; border-radius:999px; padding:5px 9px; font-size:12px; font-weight:700; background:#e2e8f0; }
+    .pill.pass { background:#dcfce7; color:#166534; } .pill.partial { background:#fef9c3; color:#854d0e; } .pill.fail { background:#fee2e2; color:#991b1b; }
+    .pill.capacity-ok { background:#dcfce7; color:#166534; } .pill.capacity-warn { background:#fef9c3; color:#854d0e; } .pill.capacity-bad { background:#fee2e2; color:#991b1b; }
+    .result { background:#0b1220; color:#e5e7eb; padding:14px; border-radius:12px; overflow:auto; white-space:pre-wrap; font-family:Consolas, monospace; font-size:12px; min-height:110px; }
+    .workspace-header { background:linear-gradient(135deg,#0f172a,#1e3a8a); color:#fff; border-radius:16px; padding:20px; margin-bottom:16px; }
+    .workspace-header p { color:#dbeafe; margin:6px 0 0; }
+    .selected-user { background:#eff6ff; border:1px solid #bfdbfe; border-radius:14px; padding:14px; margin-top:12px; }
+    @media(max-width: 980px) { .span-8,.span-6,.span-4,.span-3 { grid-column:span 12; } .hero { flex-direction:column; } .leader-grid,.user-results { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="hero">
+    <div>
+      <h1>ASOC Ticket Quality – Manager Dashboard</h1>
+      <p>Executive ticket quality, assignee drill-down and individual capacity across Jira projects.</p>
+    </div>
+    <div class="nav"><a href="/">Back to Ticket Workspace</a></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showManagerTab('qualityTab', this)">Quality Dashboard</button>
+    <button class="tab-btn" onclick="showManagerTab('capacityTab', this)">Capacity Workspace</button>
+  </div>
+
+  <div id="qualityTab" class="tab-panel active">
+    <div class="grid">
+      <div class="card span-12">
+        <h2>Dashboard Controls</h2>
+        <div class="grid">
+          <div class="span-4">
+            <label for="projectKey">Board / Project Key</label>
+            <input id="projectKey" value="{{ default_project }}" placeholder="ARC, CONC, NMGOS" />
+          </div>
+          <div class="span-8">
+            <label for="jql">Custom JQL (optional)</label>
+            <input id="jql" placeholder="project in (ARC, CONC, NMGOS) AND statusCategory != Done ORDER BY updated DESC" />
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:12px;">
+          <input id="excludeDoneCompleted" type="checkbox" checked style="width:auto;" />
+          Exclude Done / Completed / Closed / Resolved tickets
+        </label>
+        <div class="muted">All matching tickets are included. Jira is paged internally in batches of 100; no 20/100-ticket cap is applied by the app.</div>
+        <button class="success" onclick="runManagerDashboard()">Run Manager Dashboard</button>
+        <button class="secondary" onclick="exportManagerCsv(false)">Export Full CSV</button>
+        <button class="secondary" onclick="exportManagerCsv(true)">Export Weak Tickets CSV</button>
+      </div>
+
+      <div class="card span-3 kpi"><div><div class="label">Overall Quality</div><div id="kpiQuality" class="value">-</div></div><div id="kpiMeta" class="note">Run dashboard</div></div>
+      <div class="card span-3 kpi"><div><div class="label">Pass Rate</div><div id="kpiPass" class="value green">-</div></div><div class="note">Tickets scoring 80+</div></div>
+      <div class="card span-3 kpi"><div><div class="label">At Risk</div><div id="kpiRisk" class="value red">-</div></div><div class="note">Score below 60 or failed</div></div>
+      <div class="card span-3 kpi"><div><div class="label">Done Excluded</div><div id="kpiExcluded" class="value amber">-</div></div><div class="note">Excluded from active view</div></div>
+
+      <div class="card span-4"><h3>Board Quality</h3><canvas id="boardChart"></canvas></div>
+      <div class="card span-4"><h3>People Quality</h3><canvas id="assigneeChart"></canvas></div>
+      <div class="card span-4"><h3>Root Cause Gaps</h3><canvas id="gapsChart"></canvas></div>
+
+      <div class="card span-6"><h3>Top Performers</h3><div id="topPerformers" class="leader-grid"><div class="muted">Run dashboard</div></div></div>
+      <div class="card span-6"><h3>Needs Attention</h3><div id="needsAttention" class="leader-grid"><div class="muted">Run dashboard</div></div></div>
+
+      <div class="card span-12">
+        <h2>Manager Drill-down by Assignee</h2>
+        <div class="grid">
+          <div class="span-6">
+            <label for="assigneeFilter">Select Assignee</label>
+            <select id="assigneeFilter" onchange="applyAssigneeFilter()"><option value="">Run dashboard first</option></select>
+          </div>
+          <div class="span-6">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:36px;">
+              <input id="weakOnly" type="checkbox" onchange="applyAssigneeFilter()" style="width:auto;" />
+              Show only weak / non-pass tickets
+            </label>
+          </div>
+        </div>
+        <button class="ghost" onclick="sendDrilldownAssigneeToCapacity()">Check selected person’s capacity</button>
+        <div id="personStats" class="grid" style="margin-top:12px;"></div>
+        <div style="overflow:auto;">
+          <table id="personTable">
+            <thead><tr><th>Issue</th><th>Board</th><th>Score</th><th>Status</th><th>Summary</th><th>Main Gaps</th><th>Action</th></tr></thead>
+            <tbody><tr><td colspan="7" class="muted">Select an assignee after running the dashboard.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card span-12">
+        <h2>High-Risk Tickets</h2>
+        <div style="overflow:auto;">
+          <table id="riskTable">
+            <thead><tr><th>Issue</th><th>Owner</th><th>Board</th><th>Score</th><th>Status</th><th>Main Gaps</th><th>Action</th></tr></thead>
+            <tbody><tr><td colspan="7" class="muted">Run dashboard to load risk tickets.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="capacityTab" class="tab-panel">
+    <div class="workspace-header">
+      <h2 style="margin:0;">Individual Capacity Workspace</h2>
+      <p>Search a Jira user, then check active Story Point allocation across multiple projects. Done / Completed work is excluded.</p>
+    </div>
+    <div class="grid">
+
+      <div class="card span-12">
+        <h2>Team / Department Capacity Setup</h2>
+        <div class="muted">Build the list of people you manage, set each person’s sprint capacity, then run one consolidated team capacity and ticket-quality view. The team list is saved in your browser for this app.</div>
+        <div class="grid" style="margin-top:10px;">
+          <div class="span-5">
+            <label for="teamUserSearch">Search Jira user to add to team</label>
+            <input id="teamUserSearch" placeholder="Type name or email" onkeydown="if(event.key==='Enter'){searchTeamUsers();}" />
+          </div>
+          <div class="span-3">
+            <label for="teamDefaultCapacity">Default Capacity Points</label>
+            <input id="teamDefaultCapacity" type="number" value="20" />
+          </div>
+          <div class="span-4">
+            <label>&nbsp;</label>
+            <button class="success" onclick="searchTeamUsers()">Search Users</button>
+            <button class="secondary" onclick="clearTeamRoster()">Clear Team</button>
+          </div>
+        </div>
+        <div id="teamUserResults" class="user-results" style="margin-top:12px;"><div class="muted">Search for Jira users and add them to your managed team.</div></div>
+        <h3 style="margin-top:18px;">My Managed Team</h3>
+        <div style="overflow:auto;">
+          <table id="teamRosterTable">
+            <thead><tr><th>Name</th><th>Email / Account</th><th>Capacity Points</th><th>Action</th></tr></thead>
+            <tbody><tr><td colspan="4" class="muted">No team members added yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card span-12">
+        <h2>Team Capacity + Ticket Quality Scope</h2>
+        <div class="grid">
+          <div class="span-4">
+            <label for="teamProjects">Projects / Boards</label>
+            <input id="teamProjects" placeholder="ARC, CONC, NMGOS. Leave blank for all visible projects." />
+          </div>
+          <div class="span-4">
+            <label for="teamStoryPointsField">Story Points Field ID</label>
+            <input id="teamStoryPointsField" value="{{ story_points_field | default('', true) }}" placeholder="e.g. customfield_10016" />
+          </div>
+          <div class="span-4">
+            <label for="teamJql">Advanced JQL Override (optional)</label>
+            <input id="teamJql" placeholder="Only use if you want a custom active-work query" />
+          </div>
+        </div>
+        <button class="success" onclick="runTeamCapacityCheck()">Run Team Capacity + Quality View</button>
+        <div class="muted" style="margin-top:8px;">Done / Completed / Closed / Resolved work is excluded. Quality is calculated on the same active tickets used for capacity.</div>
+      </div>
+
+      <div id="teamCapacityKpis" class="grid span-12">
+        <div class="card span-3 kpi"><div><div class="label">Team Active Points</div><div class="value">-</div></div><div class="note">To Do + In Progress</div></div>
+        <div class="card span-3 kpi"><div><div class="label">Team Utilisation</div><div class="value">-</div></div><div class="note">Against team capacity</div></div>
+        <div class="card span-3 kpi"><div><div class="label">Avg Ticket Quality</div><div class="value">-</div></div><div class="note">Active tickets only</div></div>
+        <div class="card span-3 kpi"><div><div class="label">Over Allocated</div><div class="value">-</div></div><div class="note">People above 110%</div></div>
+      </div>
+
+      <div class="card span-12">
+        <h2>Team Capacity Notes</h2>
+        <div id="teamCapacityWarning" class="muted">Run the team view to see JQL, Story Points field, Jira pages read and quality/capacity assumptions.</div>
+      </div>
+
+      <div class="card span-4"><h3>Capacity by Person</h3><canvas id="teamMemberChart"></canvas></div>
+      <div class="card span-4"><h3>Ticket Quality Mix</h3><canvas id="teamQualityChart"></canvas></div>
+      <div class="card span-4"><h3>Allocation by Project</h3><canvas id="teamProjectChart"></canvas></div>
+
+      <div class="card span-12">
+        <h2>Team Member Capacity and Quality</h2>
+        <div style="overflow:auto;">
+          <table id="teamMemberTable">
+            <thead><tr><th>Person</th><th>Capacity</th><th>Active Points</th><th>Utilisation</th><th>Status</th><th>Avg Quality</th><th>Pass</th><th>Partial</th><th>Fail</th><th>Unpointed</th></tr></thead>
+            <tbody><tr><td colspan="10" class="muted">Run team capacity to load team member view.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card span-12">
+        <h2>Team Active Tickets with Quality</h2>
+        <div style="overflow:auto;">
+          <table id="teamTicketTable">
+            <thead><tr><th>Issue</th><th>Person</th><th>Project</th><th>Status</th><th>Points</th><th>Quality</th><th>Quality Gaps</th><th>Summary</th></tr></thead>
+            <tbody><tr><td colspan="8" class="muted">Run team capacity to load active tickets.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card span-12">
+        <h2>Individual Capacity: 1. Find the assignee</h2>
+        <div class="grid">
+          <div class="span-8">
+            <label for="capacityUserSearch">Search Jira user</label>
+            <input id="capacityUserSearch" placeholder="Type name or email, e.g. Rezaan, Kamil, Hennie" onkeydown="if(event.key==='Enter'){searchCapacityUsers();}" />
+          </div>
+          <div class="span-4">
+            <label>&nbsp;</label>
+            <button class="success" onclick="searchCapacityUsers()">Search Jira Users</button>
+          </div>
+        </div>
+        <div id="capacityUserResults" class="user-results" style="margin-top:12px;">
+          <div class="muted">Search for a user. This uses Jira user search, so exact names are not required when your account has the right Jira permissions.</div>
+        </div>
+        <div id="selectedCapacityUser" class="selected-user">
+          <strong>No assignee selected</strong>
+          <div class="muted">Select a user from search results or type an exact assignee name below.</div>
+        </div>
+      </div>
+
+      <div class="card span-12">
+        <h2>Individual Capacity: 2. Capacity scope</h2>
+        <div class="grid">
+          <div class="span-3">
+            <label for="capacityAssignee">Assignee Name</label>
+            <input id="capacityAssignee" placeholder="Auto-filled from user search" />
+            <input id="capacityAccountId" type="hidden" />
+          </div>
+          <div class="span-3">
+            <label for="capacityProjects">Projects / Boards</label>
+            <input id="capacityProjects" placeholder="ARC, CONC, NMGOS. Leave blank for all visible projects." />
+          </div>
+          <div class="span-3">
+            <label for="capacityStoryPointsField">Story Points Field ID</label>
+            <input id="capacityStoryPointsField" value="{{ story_points_field | default('', true) }}" placeholder="e.g. customfield_10016" />
+          </div>
+          <div class="span-3">
+            <label for="capacityPoints">Sprint Capacity Points</label>
+            <input id="capacityPoints" type="number" value="20" />
+          </div>
+        </div>
+        <label for="capacityJql">Advanced JQL Override (optional)</label>
+        <input id="capacityJql" placeholder='assignee = "accountId-or-name" AND statusCategory != Done ORDER BY updated DESC' />
+        <button class="success" onclick="runCapacityCheck()">Run Capacity Check</button>
+        <button class="secondary" onclick="clearCapacitySelection()">Clear Selection</button>
+        <div class="muted" style="margin-top:8px;">Tip: leave Projects blank to search all projects visible to the Jira account. Use project keys to limit scope and speed up the query.</div>
+      </div>
+
+      <div id="capacityKpis" class="grid span-12">
+        <div class="card span-3 kpi"><div><div class="label">Active Points</div><div class="value">-</div></div><div class="note">To Do + In Progress</div></div>
+        <div class="card span-3 kpi"><div><div class="label">Utilisation</div><div class="value">-</div></div><div class="note">Against sprint capacity</div></div>
+        <div class="card span-3 kpi"><div><div class="label">In Progress Points</div><div class="value">-</div></div><div class="note">Currently being worked</div></div>
+        <div class="card span-3 kpi"><div><div class="label">To Do Points</div><div class="value">-</div></div><div class="note">Committed but not started</div></div>
+      </div>
+
+      <div class="card span-12">
+        <h2>Capacity Analysis Notes</h2>
+        <div id="capacityWarning" class="muted">Run a capacity check to see the query, Story Points field, Jira pages read and unpointed ticket count.</div>
+      </div>
+
+      <div class="card span-6"><h3>Allocation by Project</h3><canvas id="capacityProjectChart"></canvas></div>
+      <div class="card span-6"><h3>Allocation by Status Category</h3><canvas id="capacityStatusChart"></canvas></div>
+
+      <div class="card span-12">
+        <h2>Active Allocation Tickets</h2>
+        <div style="overflow:auto;">
+          <table id="capacityTable">
+            <thead><tr><th>Issue</th><th>Project</th><th>Status</th><th>Status Category</th><th>Story Points</th><th>Type</th><th>Priority</th><th>Summary</th></tr></thead>
+            <tbody><tr><td colspan="8" class="muted">Run a capacity check to load active allocation.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card span-12" style="margin-top:16px;"><h2>Raw Result</h2><div id="result" class="result">Ready.</div></div>
+</div>
+
+<script>
+let managerData = null;
+let boardChart = null, assigneeChart = null, gapsChart = null;
+let capacityProjectChart = null, capacityStatusChart = null;
+let teamMemberChart = null, teamQualityChart = null, teamProjectChart = null;
+let selectedCapacityUser = null;
+let teamRoster = [];
+
+
+function saveTeamRoster() {
+  localStorage.setItem('asocManagerTeamRoster', JSON.stringify(teamRoster || []));
+}
+function loadTeamRoster() {
+  try { teamRoster = JSON.parse(localStorage.getItem('asocManagerTeamRoster') || '[]'); }
+  catch(e) { teamRoster = []; }
+  renderTeamRoster();
+}
+function renderTeamRoster() {
+  const tbody = document.querySelector('#teamRosterTable tbody');
+  if (!tbody) return;
+  if (!teamRoster.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="muted">No team members added yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = teamRoster.map((m, idx) => `
+    <tr>
+      <td>${escapeHtml(m.displayName || '')}</td>
+      <td>${escapeHtml(m.emailAddress || m.accountId || '')}</td>
+      <td><input type="number" value="${m.capacityPoints ?? 20}" style="width:110px;" onchange="updateTeamMemberCapacity(${idx}, this.value)" /></td>
+      <td><button class="secondary" onclick="removeTeamMember(${idx})">Remove</button></td>
+    </tr>
+  `).join('');
+}
+function updateTeamMemberCapacity(idx, value) {
+  if (!teamRoster[idx]) return;
+  teamRoster[idx].capacityPoints = Number(value || 0);
+  saveTeamRoster();
+}
+function removeTeamMember(idx) {
+  teamRoster.splice(idx, 1);
+  saveTeamRoster();
+  renderTeamRoster();
+}
+function clearTeamRoster() {
+  if (!confirm('Clear all saved team members from this browser?')) return;
+  teamRoster = [];
+  saveTeamRoster();
+  renderTeamRoster();
+}
+async function searchTeamUsers() {
+  const q = document.getElementById('teamUserSearch').value.trim();
+  if (q.length < 2) return alert('Type at least 2 characters.');
+  const box = document.getElementById('teamUserResults');
+  box.innerHTML = '<div class="muted">Searching Jira users...</div>';
+  const res = await fetch(`/api/jira/users/search?query=${encodeURIComponent(q)}&maxResults=10`);
+  const data = await res.json();
+  setResult(data);
+  const users = data.users || [];
+  if (!users.length) {
+    box.innerHTML = '<div class="muted">No users returned. Jira permissions may require an exact display name, or the user may not be visible.</div>';
+    return;
+  }
+  window._teamUsers = users;
+  box.innerHTML = users.map((u, idx) => `
+    <div class="user-card">
+      <strong>${escapeHtml(u.displayName || 'Unknown user')}</strong>
+      <div class="muted">${escapeHtml(u.emailAddress || u.accountType || '')}</div>
+      <div class="muted">AccountId: ${escapeHtml(u.accountId || '')}</div>
+      <button class="secondary" onclick="addTeamUser(${idx})">Add to Team</button>
+    </div>
+  `).join('');
+}
+function addTeamUser(idx) {
+  const users = window._teamUsers || [];
+  const u = users[idx];
+  if (!u) return;
+  const exists = teamRoster.some(m => (u.accountId && m.accountId === u.accountId) || (!u.accountId && m.displayName === u.displayName));
+  if (exists) return alert('This user is already in your team list.');
+  const defaultCap = Number(document.getElementById('teamDefaultCapacity').value || 20);
+  teamRoster.push({ displayName: u.displayName || '', accountId: u.accountId || '', emailAddress: u.emailAddress || '', capacityPoints: defaultCap });
+  saveTeamRoster();
+  renderTeamRoster();
+}
+function renderTeamCapacity(data) {
+  const s = data.summary || {};
+  document.getElementById('teamCapacityKpis').innerHTML = `
+    <div class="card span-3 kpi"><div><div class="label">Team Active Points</div><div class="value">${s.total_story_points || 0}</div></div><div class="note">Capacity: ${s.total_capacity_points || 0}</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Team Utilisation</div><div class="value">${s.utilization_percent || 0}%</div></div><div class="note">${capacityStatusPill(s.capacity_status || 'UNKNOWN')}</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Avg Ticket Quality</div><div class="value">${s.average_quality_score || 0}%</div></div><div class="note">PASS ${s.pass_count || 0} | PARTIAL ${s.partial_count || 0} | FAIL ${s.fail_count || 0}</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Over Allocated</div><div class="value">${s.over_allocated_member_count || 0}</div></div><div class="note">Available: ${s.available_member_count || 0}</div></div>
+  `;
+  const sp = data.storyPointsField || {};
+  const notes = [
+    `JQL used: ${data.jql || ''}`,
+    `Team matching: ${data.memberClauseUsed || ''}`,
+    `Story Points field: ${sp.field_id || 'not configured'} (${sp.source || 'unknown'})`,
+    `Unpointed active tickets: ${s.unpointed_ticket_count || 0}`,
+    `Jira pages read: ${data.jira_pages_read || 0}`,
+    `Fetched before exclusions: ${data.jira_fetched_count || 0}`
+  ];
+  if (sp.warning) notes.push(sp.warning);
+  document.getElementById('teamCapacityWarning').textContent = notes.join(' | ');
+
+  if (teamMemberChart) teamMemberChart.destroy();
+  if (teamQualityChart) teamQualityChart.destroy();
+  if (teamProjectChart) teamProjectChart.destroy();
+  const members = data.by_member || [];
+  const projects = data.by_project || [];
+  teamMemberChart = new Chart(document.getElementById('teamMemberChart'), {
+    type:'bar', data:{ labels:members.map(x=>x.displayName), datasets:[{ label:'Active Points', data:members.map(x=>x.total_story_points) }, { label:'Capacity', data:members.map(x=>x.capacityPoints) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+  teamQualityChart = new Chart(document.getElementById('teamQualityChart'), {
+    type:'bar', data:{ labels:['PASS','PARTIAL','FAIL'], datasets:[{ label:'Tickets', data:[s.pass_count || 0, s.partial_count || 0, s.fail_count || 0] }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+  teamProjectChart = new Chart(document.getElementById('teamProjectChart'), {
+    type:'bar', data:{ labels:projects.map(x=>x.name), datasets:[{ label:'Story Points', data:projects.map(x=>x.story_points) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const memberBody = document.querySelector('#teamMemberTable tbody');
+  memberBody.innerHTML = members.length ? members.map(m => `
+    <tr>
+      <td>${escapeHtml(m.displayName || '')}</td><td>${m.capacityPoints || 0}</td><td>${m.total_story_points || 0}</td><td>${m.utilization_percent || 0}%</td>
+      <td>${capacityStatusPill(m.capacity_status || 'UNKNOWN')}</td><td>${m.average_quality_score || 0}%</td><td>${m.pass_count || 0}</td><td>${m.partial_count || 0}</td><td>${m.fail_count || 0}</td><td>${m.unpointed_ticket_count || 0}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="10" class="muted">No team member data returned.</td></tr>';
+
+  const ticketBody = document.querySelector('#teamTicketTable tbody');
+  const rows = data.tickets || [];
+  ticketBody.innerHTML = rows.length ? rows.map(t => `
+    <tr>
+      <td>${escapeHtml(t.issueKey)}</td><td>${escapeHtml(t.assignee)}</td><td>${escapeHtml(t.projectKey)}</td><td>${escapeHtml(t.status)}</td><td>${t.storyPoints || 0}</td>
+      <td>${escapeHtml(t.qualityStatus || '')} (${t.qualityScore || 0})</td><td>${escapeHtml((t.qualityIssues || []).join(' | '))}</td><td>${escapeHtml(t.summary)}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="8" class="muted">No active tickets returned for this team/scope.</td></tr>';
+}
+async function runTeamCapacityCheck() {
+  if (!teamRoster.length) return alert('Add at least one team member first.');
+  const payload = {
+    members: teamRoster,
+    projectKeys: document.getElementById('teamProjects').value,
+    storyPointsFieldId: document.getElementById('teamStoryPointsField').value.trim(),
+    defaultCapacityPoints: Number(document.getElementById('teamDefaultCapacity').value || 20),
+    jqlOverride: document.getElementById('teamJql').value.trim(),
+    maxResults: 0
+  };
+  const res = await fetch('/api/tickets/team-capacity', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  setResult(data);
+  if (!res.ok) { alert(data.error || 'Team capacity check failed.'); return; }
+  renderTeamCapacity(data);
+}
+window.addEventListener('DOMContentLoaded', loadTeamRoster);
+
+function showManagerTab(tabId, btn) {
+  document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  btn.classList.add('active');
+}
+function escapeHtml(text) {
+  return String(text || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+}
+function setResult(data) { document.getElementById('result').textContent = JSON.stringify(data, null, 2); }
+function statusPill(status) { const c = status === 'PASS' ? 'pass' : status === 'PARTIAL' ? 'partial' : 'fail'; return `<span class="pill ${c}">${escapeHtml(status)}</span>`; }
+function capacityStatusPill(status) {
+  const s = String(status || '').toUpperCase();
+  const c = s === 'AVAILABLE' ? 'capacity-ok' : s === 'NEAR_CAPACITY' ? 'capacity-warn' : s === 'OVER_ALLOCATED' ? 'capacity-bad' : '';
+  return `<span class="pill ${c}">${escapeHtml(status || 'UNKNOWN')}</span>`;
+}
+function loadTicket(issueKey) { window.location.href = `/?issueKey=${encodeURIComponent(issueKey)}`; }
+
+function renderKpis(data) {
+  const e = data.executive_summary || {};
+  document.getElementById('kpiQuality').textContent = `${e.overall_quality_score || 0}%`;
+  document.getElementById('kpiPass').textContent = `${e.pass_percent || 0}%`;
+  document.getElementById('kpiRisk').textContent = `${e.at_risk_count || 0}`;
+  document.getElementById('kpiExcluded').textContent = `${data.excluded_done_completed_count || 0}`;
+  document.getElementById('kpiMeta').textContent = `${e.total_tickets || 0} active tickets | ${data.jira_pages_read || 0} Jira pages read | ${data.jira_fetched_count || 0} fetched`;
+}
+function renderCharts(data) {
+  if (boardChart) boardChart.destroy(); if (assigneeChart) assigneeChart.destroy(); if (gapsChart) gapsChart.destroy();
+  const boards = data.board_summary || [];
+  const assignees = (data.assignee_summary || []).slice().sort((a,b)=>a.avg_score-b.avg_score).slice(0,12);
+  const gaps = (data.issue_breakdown || []).slice(0,8);
+  boardChart = new Chart(document.getElementById('boardChart'), { type:'bar', data:{ labels:boards.map(x=>x.name), datasets:[{ label:'Avg score', data:boards.map(x=>x.avg_score) }] }, options:{ responsive:true, scales:{ y:{ beginAtZero:true, max:100 } } } });
+  assigneeChart = new Chart(document.getElementById('assigneeChart'), { type:'bar', data:{ labels:assignees.map(x=>x.name), datasets:[{ label:'Avg score', data:assignees.map(x=>x.avg_score) }] }, options:{ indexAxis:'y', responsive:true, scales:{ x:{ beginAtZero:true, max:100 } } } });
+  gapsChart = new Chart(document.getElementById('gapsChart'), { type:'bar', data:{ labels:gaps.map(x=>x.issue), datasets:[{ label:'Count', data:gaps.map(x=>x.count) }] }, options:{ indexAxis:'y', responsive:true } });
+}
+function renderLeaderboards(data) {
+  function card(x) { return `<div class="person-card"><strong>${escapeHtml(x.name)}</strong><div>Avg score: <b>${x.avg_score}</b></div><div>Tickets: ${x.total} | Fail: ${x.fail} | Partial: ${x.partial}</div></div>`; }
+  document.getElementById('topPerformers').innerHTML = (data.top_performers || []).map(card).join('') || '<div class="muted">No data</div>';
+  document.getElementById('needsAttention').innerHTML = (data.needs_attention || []).map(card).join('') || '<div class="muted">No data</div>';
+}
+function renderRiskTable(data) {
+  const tbody = document.querySelector('#riskTable tbody');
+  const rows = data.risk_tickets || [];
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="muted">No high-risk active tickets found.</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => `<tr><td>${escapeHtml(r.issueKey)}</td><td>${escapeHtml(r.assignee)}</td><td>${escapeHtml(r.board)}</td><td>${r.score}</td><td>${statusPill(r.status)}</td><td>${escapeHtml((r.main_gaps||[]).join(' | '))}</td><td><button onclick="loadTicket('${escapeHtml(r.issueKey)}')">Load</button></td></tr>`).join('');
+}
+function populateAssigneeFilter(data) {
+  const sel = document.getElementById('assigneeFilter');
+  const assignees = (data.assignee_summary || []).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">All assignees</option>' + assignees.map(a => `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)} (${a.total})</option>`).join('');
+}
+function applyAssigneeFilter() {
+  if (!managerData) return;
+  const selected = document.getElementById('assigneeFilter').value;
+  const weakOnly = document.getElementById('weakOnly').checked;
+  let tickets = (managerData.tickets || []).map(t => {
+    const ni = t.normalized_issue || {}; const a = t.assessment || {}; const key = ni.issue_key || t.issueKey || '';
+    return { issueKey:key, board:key.includes('-') ? key.split('-')[0] : '', assignee:ni.assignee || 'Unassigned', summary:ni.summary || '', score:a.score || 0, status:a.status || '', main_gaps:a.issues || [] };
+  });
+  if (selected) tickets = tickets.filter(t => t.assignee === selected);
+  if (weakOnly) tickets = tickets.filter(t => t.status !== 'PASS' || t.score < 80);
+  const avg = tickets.length ? Math.round(tickets.reduce((s,t)=>s+t.score,0)/tickets.length*10)/10 : 0;
+  const nonPass = tickets.filter(t => t.status !== 'PASS').length;
+  document.getElementById('personStats').innerHTML = `<div class="card span-3 kpi"><div><div class="label">Selected Tickets</div><div class="value">${tickets.length}</div></div></div><div class="card span-3 kpi"><div><div class="label">Avg Score</div><div class="value">${avg}%</div></div></div><div class="card span-3 kpi"><div><div class="label">Non-Pass</div><div class="value red">${nonPass}</div></div></div><div class="card span-3 kpi"><div><div class="label">Owner</div><div class="value" style="font-size:18px;">${escapeHtml(selected || 'All')}</div></div></div>`;
+  const tbody = document.querySelector('#personTable tbody');
+  if (!tickets.length) { tbody.innerHTML = '<tr><td colspan="7" class="muted">No tickets for this filter.</td></tr>'; return; }
+  tickets.sort((a,b)=>a.score-b.score || a.issueKey.localeCompare(b.issueKey));
+  tbody.innerHTML = tickets.map(t => `<tr><td>${escapeHtml(t.issueKey)}</td><td>${escapeHtml(t.board)}</td><td>${t.score}</td><td>${statusPill(t.status)}</td><td>${escapeHtml(t.summary)}</td><td>${escapeHtml((t.main_gaps||[]).slice(0,4).join(' | '))}</td><td><button onclick="loadTicket('${escapeHtml(t.issueKey)}')">Load</button></td></tr>`).join('');
+}
+async function runManagerDashboard() {
+  const payload = {
+    projectKey: document.getElementById('projectKey').value,
+    jql: document.getElementById('jql').value,
+    maxResults: 0,
+    excludeDoneCompleted: document.getElementById('excludeDoneCompleted').checked
+  };
+  const res = await fetch('/api/tickets/manager-dashboard', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  managerData = data; setResult(data);
+  renderKpis(data); renderCharts(data); renderLeaderboards(data); renderRiskTable(data); populateAssigneeFilter(data); applyAssigneeFilter();
+}
+function exportManagerCsv(weakOnly) {
+  const projectKey = encodeURIComponent(document.getElementById('projectKey').value || '');
+  const jql = encodeURIComponent(document.getElementById('jql').value || '');
+  const excludeDone = encodeURIComponent(document.getElementById('excludeDoneCompleted').checked ? 'true' : 'false');
+  const endpoint = weakOnly ? '/api/tickets/bulk-dashboard-weak.csv' : '/api/tickets/bulk-dashboard.csv';
+  window.open(`${endpoint}?projectKey=${projectKey}&jql=${jql}&maxResults=0&excludeDoneCompleted=${excludeDone}`, '_blank');
+}
+function sendDrilldownAssigneeToCapacity() {
+  const selected = document.getElementById('assigneeFilter')?.value || '';
+  if (!selected) return alert('Select an assignee first.');
+  showManagerTab('capacityTab', document.querySelectorAll('.tab-btn')[1]);
+  document.getElementById('capacityUserSearch').value = selected;
+  document.getElementById('capacityAssignee').value = selected;
+  document.getElementById('capacityAccountId').value = '';
+  document.getElementById('selectedCapacityUser').innerHTML = `<strong>${escapeHtml(selected)}</strong><div class="muted">Loaded from manager drill-down. Use Jira user search to resolve accountId if needed.</div>`;
+}
+
+async function searchCapacityUsers() {
+  const q = document.getElementById('capacityUserSearch').value.trim();
+  if (q.length < 2) return alert('Type at least 2 characters.');
+  const box = document.getElementById('capacityUserResults');
+  box.innerHTML = '<div class="muted">Searching Jira users...</div>';
+  const res = await fetch(`/api/jira/users/search?query=${encodeURIComponent(q)}&maxResults=10`);
+  const data = await res.json();
+  setResult(data);
+  const users = data.users || [];
+  if (!users.length) {
+    box.innerHTML = `<div class="muted">No users returned. Jira permissions may require an exact display name, or the user may not be visible to this account.</div>`;
+    return;
+  }
+  box.innerHTML = users.map((u, idx) => `
+    <div class="user-card">
+      <strong>${escapeHtml(u.displayName || 'Unknown user')}</strong>
+      <div class="muted">${escapeHtml(u.emailAddress || u.accountType || '')}</div>
+      <div class="muted">AccountId: ${escapeHtml(u.accountId || '')}</div>
+      <button class="secondary" onclick="selectCapacityUser(${idx})">Select</button>
+    </div>
+  `).join('');
+  window._capacityUsers = users;
+}
+function selectCapacityUser(idx) {
+  const users = window._capacityUsers || [];
+  const u = users[idx];
+  if (!u) return;
+  selectedCapacityUser = u;
+  document.getElementById('capacityAssignee').value = u.displayName || '';
+  document.getElementById('capacityAccountId').value = u.accountId || '';
+  document.getElementById('selectedCapacityUser').innerHTML = `
+    <strong>${escapeHtml(u.displayName || 'Selected user')}</strong>
+    <div class="muted">${escapeHtml(u.emailAddress || '')}</div>
+    <div class="muted">Jira accountId selected. Capacity JQL will use accountId for accuracy.</div>
+  `;
+}
+function clearCapacitySelection() {
+  selectedCapacityUser = null;
+  document.getElementById('capacityAssignee').value = '';
+  document.getElementById('capacityAccountId').value = '';
+  document.getElementById('capacityUserSearch').value = '';
+  document.getElementById('capacityUserResults').innerHTML = '<div class="muted">Search for a user.</div>';
+  document.getElementById('selectedCapacityUser').innerHTML = '<strong>No assignee selected</strong><div class="muted">Select a user from search results or type an exact assignee name below.</div>';
+}
+function renderCapacity(data) {
+  const s = data.summary || {};
+  document.getElementById('capacityKpis').innerHTML = `
+    <div class="card span-3 kpi"><div><div class="label">Active Points</div><div class="value">${s.total_story_points || 0}</div></div><div class="note">${s.active_ticket_count || 0} active tickets</div></div>
+    <div class="card span-3 kpi"><div><div class="label">Utilisation</div><div class="value">${s.utilization_percent || 0}%</div></div><div class="note">${capacityStatusPill(s.capacity_status || 'UNKNOWN')}</div></div>
+    <div class="card span-3 kpi"><div><div class="label">In Progress Points</div><div class="value">${s.in_progress_story_points || 0}</div></div><div class="note">Currently being worked</div></div>
+    <div class="card span-3 kpi"><div><div class="label">To Do Points</div><div class="value">${s.todo_story_points || 0}</div></div><div class="note">Committed but not started</div></div>
+  `;
+  const sp = data.storyPointsField || {};
+  const notes = [
+    `JQL used: ${data.jql || ''}`,
+    `Assignee matching: ${data.assigneeClauseUsed || ''}`,
+    `Story Points field: ${sp.field_id || 'not configured'} (${sp.source || 'unknown'})`,
+    `Unpointed active tickets: ${s.unpointed_ticket_count || 0}`,
+    `Jira pages read: ${data.jira_pages_read || 0}`,
+    `Fetched before exclusions: ${data.jira_fetched_count || 0}`
+  ];
+  if (sp.warning) notes.push(sp.warning);
+  document.getElementById('capacityWarning').textContent = notes.join(' | ');
+
+  if (capacityProjectChart) capacityProjectChart.destroy();
+  if (capacityStatusChart) capacityStatusChart.destroy();
+  const projects = data.by_project || [];
+  const statuses = data.by_status_category || [];
+  capacityProjectChart = new Chart(document.getElementById('capacityProjectChart'), {
+    type:'bar',
+    data:{ labels:projects.map(x=>x.name), datasets:[{ label:'Story Points', data:projects.map(x=>x.story_points) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+  capacityStatusChart = new Chart(document.getElementById('capacityStatusChart'), {
+    type:'bar',
+    data:{ labels:statuses.map(x=>x.name), datasets:[{ label:'Story Points', data:statuses.map(x=>x.story_points) }] },
+    options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const tbody = document.querySelector('#capacityTable tbody');
+  const rows = data.tickets || [];
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">No active To Do / In Progress tickets found for this assignee/scope.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(t => `
+    <tr>
+      <td>${escapeHtml(t.issueKey)}</td>
+      <td>${escapeHtml(t.projectKey)}</td>
+      <td>${escapeHtml(t.status)}</td>
+      <td>${escapeHtml(t.statusCategory)}</td>
+      <td>${t.storyPoints || 0}</td>
+      <td>${escapeHtml(t.issueType)}</td>
+      <td>${escapeHtml(t.priority)}</td>
+      <td>${escapeHtml(t.summary)}</td>
+    </tr>
+  `).join('');
+}
+async function runCapacityCheck() {
+  const assignee = document.getElementById('capacityAssignee').value.trim();
+  const accountId = document.getElementById('capacityAccountId').value.trim();
+  if (!assignee && !accountId) return alert('Search/select a Jira user or type an assignee name first.');
+  const payload = {
+    assignee,
+    assigneeAccountId: accountId,
+    projectKeys: document.getElementById('capacityProjects').value,
+    storyPointsFieldId: document.getElementById('capacityStoryPointsField').value.trim(),
+    sprintCapacityPoints: Number(document.getElementById('capacityPoints').value || 20),
+    jqlOverride: document.getElementById('capacityJql').value.trim(),
+    maxResults: 0
+  };
+  const res = await fetch('/api/tickets/assignee-capacity', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  setResult(data);
+  if (!res.ok) {
+    alert(data.error || 'Capacity check failed.');
+    return;
+  }
+  renderCapacity(data);
+}
+</script>
+</body>
+</html>
