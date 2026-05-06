@@ -2794,3 +2794,6 @@ def jira_update(data: Dict[str, Any]):
     else:
         result["jira_response"] = {"message": "Issue updated successfully"}
     return result
+@app.get("/health")
+def health():
+    return {"status": "ok"}
