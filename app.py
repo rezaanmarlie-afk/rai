@@ -16,7 +16,10 @@ from fastapi.templating import Jinja2Templates
 load_dotenv()
 
 app = FastAPI(title="Jira Ticket Quality Compliance AI")
+
 templates = Jinja2Templates(directory="templates")
+templates.env.cache = {}
+
 
 JIRA_BASE_URL = os.getenv("JIRA_BASE_URL", "").rstrip("/")
 JIRA_EMAIL = os.getenv("JIRA_EMAIL", "")
