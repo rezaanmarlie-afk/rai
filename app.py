@@ -17,6 +17,9 @@ load_dotenv()
 
 app = FastAPI(title="Jira Ticket Quality Compliance AI")
 
+templates = Jinja2Templates(directory="templates")
+templates.env.cache = {}
+
 from jinja2 import Environment
 from fastapi.templating import Jinja2Templates
 
