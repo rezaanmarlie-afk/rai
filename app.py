@@ -17,19 +17,10 @@ load_dotenv()
 
 app = FastAPI(title="Jira Ticket Quality Compliance AI")
 
-templates = Jinja2Templates(directory="templates")
-templates.env.cache = {}
-
-from jinja2 import Environment
 from fastapi.templating import Jinja2Templates
 
-jinja_env = Environment(
-    loader=None,
-    autoescape=True,
-    cache_size=0,   # THIS disables caching properly
-)
-
-templates = Jinja2Templates(directory="templates", env=jinja_env)
+templates = Jinja2Templates(directory="templates")
+templates.env.cache = {}
 
 
 JIRA_BASE_URL = os.getenv("JIRA_BASE_URL", "").rstrip("/")
