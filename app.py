@@ -2322,8 +2322,16 @@ def build_team_capacity_dashboard(
     }
 
 @app.get("/", response_class=HTMLResponse)
+
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "default_project": DEFAULT_PROJECT, "story_points_field": JIRA_STORY_POINTS_FIELD})
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "default_project": str(DEFAULT_PROJECT),
+            "story_points_field": str(JIRA_STORY_POINTS_FIELD)
+        }
+    )
 
 
 @app.get("/manager", response_class=HTMLResponse)
